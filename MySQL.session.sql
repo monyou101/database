@@ -25,7 +25,7 @@ CREATE TABLE `USER` (
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `CAST` (
+CREATE TABLE `MOVIE_CAST` (
     `cast_id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `movie_id` INT UNSIGNED NOT NULL,
     `actor_id` INT UNSIGNED NOT NULL,
@@ -51,52 +51,72 @@ CREATE TABLE `DIRECTOR` (
     UNIQUE KEY `uq_movie_director` (`movie_id`, `actor_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- unified entity table so a single (type,id) pair can be referenced by REVIEW
+CREATE TABLE `ENTITY` (
+    `entity_type` ENUM('MOVIE','ACTOR','MOVIE_CAST','DIRECTOR') NOT NULL,
+    `entity_id` INT UNSIGNED NOT NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`entity_type`,`entity_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- keep ENTITY in sync with base tables
+DELIMITER $$
+CREATE TRIGGER `trg_movie_after_insert` AFTER INSERT ON `MOVIE` FOR EACH ROW
+BEGIN
+    INSERT IGNORE INTO `ENTITY` (`entity_type`,`entity_id`) VALUES ('MOVIE', NEW.movie_id);
+END$$
+
+CREATE TRIGGER `trg_movie_after_delete` AFTER DELETE ON `MOVIE` FOR EACH ROW
+BEGIN
+    DELETE FROM `ENTITY` WHERE `entity_type`='MOVIE' AND `entity_id`=OLD.movie_id;
+END$$
+
+CREATE TRIGGER `trg_actor_after_insert` AFTER INSERT ON `ACTOR` FOR EACH ROW
+BEGIN
+    INSERT IGNORE INTO `ENTITY` (`entity_type`,`entity_id`) VALUES ('ACTOR', NEW.actor_id);
+END$$
+
+CREATE TRIGGER `trg_actor_after_delete` AFTER DELETE ON `ACTOR` FOR EACH ROW
+BEGIN
+    DELETE FROM `ENTITY` WHERE `entity_type`='ACTOR' AND `entity_id`=OLD.actor_id;
+END$$
+
+CREATE TRIGGER `trg_cast_after_insert` AFTER INSERT ON `MOVIE_CAST` FOR EACH ROW
+BEGIN
+    INSERT IGNORE INTO `ENTITY` (`entity_type`,`entity_id`) VALUES ('MOVIE_CAST', NEW.cast_id);
+END$$
+
+CREATE TRIGGER `trg_cast_after_delete` AFTER DELETE ON `MOVIE_CAST` FOR EACH ROW
+BEGIN
+    DELETE FROM `ENTITY` WHERE `entity_type`='MOVIE_CAST' AND `entity_id`=OLD.cast_id;
+END$$
+
+CREATE TRIGGER `trg_director_after_insert` AFTER INSERT ON `DIRECTOR` FOR EACH ROW
+BEGIN
+    INSERT IGNORE INTO `ENTITY` (`entity_type`,`entity_id`) VALUES ('DIRECTOR', NEW.director_id);
+END$$
+
+CREATE TRIGGER `trg_director_after_delete` AFTER DELETE ON `DIRECTOR` FOR EACH ROW
+BEGIN
+    DELETE FROM `ENTITY` WHERE `entity_type`='DIRECTOR' AND `entity_id`=OLD.director_id;
+END$$
+DELIMITER ;
+
+-- REVIEW now references ENTITY with a single target_id + target_type
 CREATE TABLE `REVIEW` (
     `review_id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` INT UNSIGNED NOT NULL,
-    `movie_id` INT UNSIGNED DEFAULT NULL,
-    `actor_id` INT UNSIGNED DEFAULT NULL,
-    `cast_id` INT UNSIGNED DEFAULT NULL,
-    `director_id` INT UNSIGNED DEFAULT NULL,
+    `target_type` ENUM('MOVIE','ACTOR','MOVIE_CAST','DIRECTOR') NOT NULL,
+    `target_id` INT UNSIGNED NOT NULL,
     `rating` DECIMAL(3,1) NOT NULL CHECK (`rating` >= 0 AND `rating` <= 10),
     `title` VARCHAR(255) DEFAULT NULL,
     `body` TEXT,
     `is_public` TINYINT(1) NOT NULL DEFAULT 1,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    -- derived columns to enforce a single target and provide a stable key for uniqueness
-    `target_type` ENUM('MOVIE','ACTOR','CAST','DIRECTOR') AS (
-        CASE
-            WHEN `movie_id` IS NOT NULL THEN 'MOVIE'
-            WHEN `actor_id` IS NOT NULL THEN 'ACTOR'
-            WHEN `cast_id` IS NOT NULL THEN 'CAST'
-            WHEN `director_id` IS NOT NULL THEN 'DIRECTOR'
-            ELSE NULL
-        END
-    ) STORED,
-    `target_key` VARCHAR(64) AS (
-        CASE
-            WHEN `movie_id` IS NOT NULL THEN CONCAT('MOVIE_', `movie_id`)
-            WHEN `actor_id` IS NOT NULL THEN CONCAT('ACTOR_', `actor_id`)
-            WHEN `cast_id` IS NOT NULL THEN CONCAT('CAST_', `cast_id`)
-            WHEN `director_id` IS NOT NULL THEN CONCAT('DIRECTOR_', `director_id`)
-            ELSE NULL
-        END
-    ) STORED,
     INDEX `idx_review_user` (`user_id`),
-    INDEX `idx_review_movie` (`movie_id`),
-    INDEX `idx_review_actor` (`actor_id`),
-    INDEX `idx_review_cast` (`cast_id`),
-    INDEX `idx_review_director` (`director_id`),
-    -- ensure exactly one target is specified
-    CHECK (
-        ( (`movie_id` IS NOT NULL) + (`actor_id` IS NOT NULL) + (`cast_id` IS NOT NULL) + (`director_id` IS NOT NULL) ) = 1
-    ),
-    -- prevent same user reviewing the same target more than once
-    UNIQUE KEY `uq_user_target` (`user_id`, `target_key`),
+    INDEX `idx_review_target` (`target_type`,`target_id`),
+    UNIQUE KEY `uq_user_target_type` (`user_id`,`target_type`,`target_id`),
     CONSTRAINT `fk_review_user` FOREIGN KEY (`user_id`) REFERENCES `USER` (`user_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT `fk_review_movie` FOREIGN KEY (`movie_id`) REFERENCES `MOVIE` (`movie_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT `fk_review_actor` FOREIGN KEY (`actor_id`) REFERENCES `ACTOR` (`actor_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT `fk_review_cast` FOREIGN KEY (`cast_id`) REFERENCES `CAST` (`cast_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT `fk_review_director` FOREIGN KEY (`director_id`) REFERENCES `DIRECTOR` (`director_id`) ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT `fk_review_entity` FOREIGN KEY (`target_type`,`target_id`) REFERENCES `ENTITY` (`entity_type`,`entity_id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
