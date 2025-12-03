@@ -1,3 +1,12 @@
+-- SET GLOBAL log_bin_trust_function_creators = 1;
+
+DROP TABLE IF EXISTS `REVIEW`;
+DROP TABLE IF EXISTS `ENTITY`;
+DROP TABLE IF EXISTS `DIRECTOR`;
+DROP TABLE IF EXISTS `MOVIE_CAST`;
+DROP TABLE IF EXISTS `ACTOR`;
+DROP TABLE IF EXISTS `USER`;
+DROP TABLE IF EXISTS `MOVIE`;
 
 CREATE TABLE `MOVIE` (
     `movie_id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -60,47 +69,29 @@ CREATE TABLE `ENTITY` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- keep ENTITY in sync with base tables
-DELIMITER $$
 CREATE TRIGGER `trg_movie_after_insert` AFTER INSERT ON `MOVIE` FOR EACH ROW
-BEGIN
     INSERT IGNORE INTO `ENTITY` (`entity_type`,`entity_id`) VALUES ('MOVIE', NEW.movie_id);
-END$$
 
 CREATE TRIGGER `trg_movie_after_delete` AFTER DELETE ON `MOVIE` FOR EACH ROW
-BEGIN
     DELETE FROM `ENTITY` WHERE `entity_type`='MOVIE' AND `entity_id`=OLD.movie_id;
-END$$
 
 CREATE TRIGGER `trg_actor_after_insert` AFTER INSERT ON `ACTOR` FOR EACH ROW
-BEGIN
     INSERT IGNORE INTO `ENTITY` (`entity_type`,`entity_id`) VALUES ('ACTOR', NEW.actor_id);
-END$$
 
 CREATE TRIGGER `trg_actor_after_delete` AFTER DELETE ON `ACTOR` FOR EACH ROW
-BEGIN
     DELETE FROM `ENTITY` WHERE `entity_type`='ACTOR' AND `entity_id`=OLD.actor_id;
-END$$
 
 CREATE TRIGGER `trg_cast_after_insert` AFTER INSERT ON `MOVIE_CAST` FOR EACH ROW
-BEGIN
     INSERT IGNORE INTO `ENTITY` (`entity_type`,`entity_id`) VALUES ('MOVIE_CAST', NEW.cast_id);
-END$$
 
 CREATE TRIGGER `trg_cast_after_delete` AFTER DELETE ON `MOVIE_CAST` FOR EACH ROW
-BEGIN
     DELETE FROM `ENTITY` WHERE `entity_type`='MOVIE_CAST' AND `entity_id`=OLD.cast_id;
-END$$
 
 CREATE TRIGGER `trg_director_after_insert` AFTER INSERT ON `DIRECTOR` FOR EACH ROW
-BEGIN
     INSERT IGNORE INTO `ENTITY` (`entity_type`,`entity_id`) VALUES ('DIRECTOR', NEW.director_id);
-END$$
 
 CREATE TRIGGER `trg_director_after_delete` AFTER DELETE ON `DIRECTOR` FOR EACH ROW
-BEGIN
     DELETE FROM `ENTITY` WHERE `entity_type`='DIRECTOR' AND `entity_id`=OLD.director_id;
-END$$
-DELIMITER ;
 
 -- REVIEW now references ENTITY with a single target_id + target_type
 CREATE TABLE `REVIEW` (
