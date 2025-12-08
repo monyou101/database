@@ -28,14 +28,15 @@ def connect_db():
         host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME, autocommit=False
     )
 
-def upsert_movie(cur, tmdb_id, title, release_year, genre, rating):
+def check_movie(cur, tmdb_id):
     # 先檢查是否存在，避免重複插入時消耗 AUTO_INCREMENT
     cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
     if row:
         return row[0]  # 已存在，直接回傳 movie_id
+    return None  # 明確返回 None 若不存在
 
-    # 不存在才插入
+def upsert_movie(cur, tmdb_id, title, release_year, genre, rating):
     cur.execute("""
         INSERT INTO `MOVIE` (tmdb_id, title, release_year, genre, rating)
         VALUES (%s,%s,%s,%s,%s)
@@ -47,16 +48,18 @@ def upsert_movie(cur, tmdb_id, title, release_year, genre, rating):
     row = cur.fetchone()
     if row is None:
         raise RuntimeError(f"Failed to fetch movie_id for tmdb_id={tmdb_id}")
+    print(f"Stored movie {title} (movie_id={row[0]})")
     return row[0]
 
-def upsert_actor(cur, tmdb_id, name, birthdate=None, country=None):
+def check_actor(cur, tmdb_id):
     # 先檢查是否存在，避免重複插入時消耗 AUTO_INCREMENT
     cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
     if row:
         return row[0]
+    return None  # 明確返回 None 若不存在
 
-    # 不存在才插入
+def upsert_actor(cur, tmdb_id, name, birthdate=None, country=None):
     cur.execute("""
         INSERT INTO `ACTOR` (tmdb_id, name, birthdate, country)
         VALUES (%s,%s,%s,%s)
@@ -65,7 +68,8 @@ def upsert_actor(cur, tmdb_id, name, birthdate=None, country=None):
     cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
     if row is None:
-        raise RuntimeError(f"Failed to fetch movie_id for tmdb_id={tmdb_id}")
+        raise RuntimeError(f"Failed to fetch actor_id for tmdb_id={tmdb_id}")
+    print(f"Stored actor {name} (actor_id={row[0]})")
     return row[0]
 
 def ensure_movie_cast(cur, movie_id, actor_id, character_name, billing_order):
@@ -81,6 +85,17 @@ def ensure_director(cur, movie_id, actor_id):
         VALUES (%s,%s)
     """, (movie_id, actor_id))
 
+def fetch_person_details(person_tmdb_id):
+    # 從 TMDB 獲取 person 的 birthday 與 place_of_birth
+    try:
+        data = fetch_tmdb_data(f"/person/{person_tmdb_id}")
+        birthdate = data.get("birthday")  # 格式如 "1974-10-28"
+        country = data.get("place_of_birth")  # 字串，如 "Los Angeles, California, USA"
+        return birthdate, country
+    except Exception as e:
+        print(f"Warning: Failed to fetch details for person {person_tmdb_id}: {e}")
+        return None, None
+
 def fetch_and_store_movie(tmdb_movie_id):
     data = fetch_tmdb_data(f"/movie/{tmdb_movie_id}", params={"append_to_response":"credits,genres"})
     title = data.get("title")
@@ -93,6 +108,10 @@ def fetch_and_store_movie(tmdb_movie_id):
     conn = connect_db()
     cur = conn.cursor()
 
+    if check_movie(cur, tmdb_movie_id):
+        print(f"Movie with tmdb_id {tmdb_movie_id} already exists, skipping.")
+        return
+
     try:
         movie_id = upsert_movie(cur, tmdb_movie_id, title, release_year, genres, rating)
 
@@ -100,23 +119,27 @@ def fetch_and_store_movie(tmdb_movie_id):
         # actors (cast)
         for member in credits.get("cast", []):
             actor_tmdb_id = member.get("id")
-            actor_name = member.get("name")
+            actor_id = check_actor(cur, actor_tmdb_id)
+            if not actor_id:
+                actor_name = member.get("name")
+                birthdate, country = fetch_person_details(actor_tmdb_id)
+                actor_id = upsert_actor(cur, actor_tmdb_id, actor_name, birthdate, country)
             character = member.get("character")
             order = member.get("order")
-            # 不呼叫 actor detail 以降低 API 次數；若需出生地、生日可額外呼叫 /person/{id}
-            actor_id = upsert_actor(cur, actor_tmdb_id, actor_name, None, None)
             ensure_movie_cast(cur, movie_id, actor_id, character, order)
 
         # crew -> director
         for member in credits.get("crew", []):
             if member.get("job") == "Director":
                 director_tmdb_id = member.get("id")
-                director_name = member.get("name")
-                director_actor_id = upsert_actor(cur, director_tmdb_id, director_name, None, None)
+                director_actor_id = check_actor(cur, director_tmdb_id)
+                if not director_actor_id:
+                    director_name = member.get("name")
+                    birthdate, country = fetch_person_details(director_tmdb_id)
+                    director_actor_id = upsert_actor(cur, director_tmdb_id, director_name, birthdate, country)
                 ensure_director(cur, movie_id, director_actor_id)
 
         conn.commit()
-        print(f"Stored movie {title} (movie_id={movie_id})")
     except Exception:
         conn.rollback()
         raise
