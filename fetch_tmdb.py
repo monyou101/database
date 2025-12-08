@@ -29,6 +29,13 @@ def connect_db():
     )
 
 def upsert_movie(cur, tmdb_id, title, release_year, genre, rating):
+    # 先檢查是否存在，避免重複插入時消耗 AUTO_INCREMENT
+    cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id=%s", (tmdb_id,))
+    row = cur.fetchone()
+    if row:
+        return row[0]  # 已存在，直接回傳 movie_id
+
+    # 不存在才插入
     cur.execute("""
         INSERT INTO `MOVIE` (tmdb_id, title, release_year, genre, rating)
         VALUES (%s,%s,%s,%s,%s)
@@ -43,6 +50,13 @@ def upsert_movie(cur, tmdb_id, title, release_year, genre, rating):
     return row[0]
 
 def upsert_actor(cur, tmdb_id, name, birthdate=None, country=None):
+    # 先檢查是否存在，避免重複插入時消耗 AUTO_INCREMENT
+    cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
+    row = cur.fetchone()
+    if row:
+        return row[0]
+
+    # 不存在才插入
     cur.execute("""
         INSERT INTO `ACTOR` (tmdb_id, name, birthdate, country)
         VALUES (%s,%s,%s,%s)
@@ -110,17 +124,58 @@ def fetch_and_store_movie(tmdb_movie_id):
         cur.close()
         conn.close()
 
+def fetch_popular_movies(pages=1):
+    """回傳 popular 清單中的 movie ids"""
+    try:
+        pages_int = int(pages)
+        if pages_int < 1:
+            pages_int = 1
+    except (ValueError, TypeError):
+        raise ValueError(f"Invalid value for pages: {pages!r}. Must be an integer >= 1.")
+    ids = []
+    for p in range(1, pages_int + 1):
+        data = fetch_tmdb_data("/movie/popular", params={"page": p})
+        for item in data.get("results", []):
+            mid = item.get("id")
+            if isinstance(mid, int):
+                ids.append(mid)
+            else:
+                print(f"Warning: Skipping non-integer movie ID {mid!r} (type: {type(mid).__name__}) from TMDB API response on page {p}")
+    return ids
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:
-        print("Usage: python fetch_tmdb.py <tmdb_movie_id> [tmdb_movie_id ...]")
+        print("Usage:")
+        print("  python fetch_tmdb.py <tmdb_movie_id> [tmdb_movie_id ...]")
+        print("  python fetch_tmdb.py popular [pages]")
         sys.exit(1)
 
     if not TMDB_API_KEY:
         raise RuntimeError("TMDB_API_KEY env var not set")
 
-    for mid in sys.argv[1:]:
-        try:
-            fetch_and_store_movie(int(mid))
-        except ValueError:
-            print(f"Error: '{mid}' is not a valid integer movie ID. Skipping.")
+    # 支援兩種模式：單一/多 id，或 popular 批次抓取
+    if sys.argv[1].lower() == "popular":
+        pages = 1
+        if len(sys.argv) >= 3:
+            try:
+                pages = int(sys.argv[2])
+            except ValueError:
+                print(f"Invalid pages value '{sys.argv[2]}', default to 1")
+                pages = 1
+
+        ids = fetch_popular_movies(pages=pages)
+        print(f"Fetched {len(ids)} popular movie ids (pages={pages})")
+        for mid in ids:
+            try:
+                fetch_and_store_movie(int(mid))
+            except Exception as e:
+                print(f"Failed to fetch/store movie {mid}: {e}")
+    else:
+        for mid in sys.argv[1:]:
+            try:
+                fetch_and_store_movie(int(mid))
+            except ValueError:
+                print(f"Error: '{mid}' is not a valid integer movie ID. Skipping.")
+            except Exception as e:
+                print(f"Failed to fetch/store movie {mid}: {e}")
