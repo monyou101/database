@@ -169,6 +169,8 @@ def fetch_and_store_actor(tmdb_actor_id):
             raise ValueError(f"Actor {tmdb_actor_id} has no name in TMDB data")
         birthdate, country = fetch_person_details(tmdb_actor_id)
         upsert_actor(cur, tmdb_actor_id, name, birthdate, country)
+        print("Note: Only basic actor information has been stored. No movie associations have been made." \
+        " To associate this actor with movies, please use the appropriate functionality separately.")
         conn.commit()
     except Exception:
         conn.rollback()
@@ -242,23 +244,56 @@ if __name__ == "__main__":
             if not results:
                 print(f"No movies found for query '{query}'")
                 sys.exit(1)
-            movie = results[0]  # 取第一個結果
-            tmdb_id = movie.get("id")
-            title = movie.get("title")
-            print(f"Found movie: {title} (ID: {tmdb_id})")
-            fetch_and_store_movie(tmdb_id)
+            print(f"Found {len(results)} movies:")
+            for i, movie in enumerate(results):
+                title = movie.get("title", "Unknown")
+                year = movie.get("release_date", "")[:4] if movie.get("release_date") else "Unknown"
+                print(f"{i+1}. {title} ({year})")
+            try:
+                choice = int(input(f"Enter the number of the movie to fetch (1-{len(results)}), or 0 to cancel: "))
+                if choice == 0:
+                    print("Cancelled.")
+                    sys.exit(0)
+                if 1 <= choice <= len(results):
+                    movie = results[choice-1]
+                    tmdb_id = movie.get("id")
+                    title = movie.get("title")
+                    print(f"Selected movie: {title} (ID: {tmdb_id})")
+                    fetch_and_store_movie(tmdb_id)
+                else:
+                    print("Invalid choice.")
+                    sys.exit(1)
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+                sys.exit(1)
         elif search_type == "actor":
             data = fetch_tmdb_data("/search/person", params={"query": query})
             results = data.get("results", [])
             if not results:
                 print(f"No actors found for query '{query}'")
                 sys.exit(1)
-            person = results[0]  # 取第一個結果
-            tmdb_id = person.get("id")
-            name = person.get("name")
-            print(f"Found actor: {name} (ID: {tmdb_id})")
-            fetch_and_store_actor(tmdb_id)
-            print("Note: Only basic actor information has been stored. No movie associations have been made. To associate this actor with movies, please use the appropriate functionality separately.")
+            print(f"Found {len(results)} actors:")
+            for i, person in enumerate(results):
+                name = person.get("name", "Unknown")
+                known_for = person.get("known_for_department", "Unknown")
+                print(f"{i+1}. {name} (Known for: {known_for})")
+            try:
+                choice = int(input(f"Enter the number of the actor to fetch (1-{len(results)}), or 0 to cancel: "))
+                if choice == 0:
+                    print("Cancelled.")
+                    sys.exit(0)
+                if 1 <= choice <= len(results):
+                    person = results[choice-1]
+                    tmdb_id = person.get("id")
+                    name = person.get("name")
+                    print(f"Selected actor: {name} (ID: {tmdb_id})")
+                    fetch_and_store_actor(tmdb_id)
+                else:
+                    print("Invalid choice.")
+                    sys.exit(1)
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+                sys.exit(1)
         else:
             print(f"Invalid search type '{search_type}'. Use 'movie' or 'actor'.")
             sys.exit(1)
