@@ -110,6 +110,8 @@ def fetch_and_store_movie(tmdb_movie_id):
 
     if check_movie(cur, tmdb_movie_id):
         print(f"Movie with tmdb_id {tmdb_movie_id} already exists, skipping.")
+        cur.close()
+        conn.close()
         return
 
     try:
@@ -147,6 +149,34 @@ def fetch_and_store_movie(tmdb_movie_id):
         cur.close()
         conn.close()
 
+def fetch_and_store_actor(tmdb_actor_id):
+    if not TMDB_API_KEY:
+        raise RuntimeError("TMDB_API_KEY env var not set")
+    
+    conn = connect_db()
+    cur = conn.cursor()
+
+    if check_actor(cur, tmdb_actor_id):
+        print(f"Actor with tmdb_id {tmdb_actor_id} already exists, skipping.")
+        cur.close()
+        conn.close()
+        return
+
+    try:
+        data = fetch_tmdb_data(f"/person/{tmdb_actor_id}")
+        name = data.get("name")
+        if not name:
+            raise ValueError(f"Actor {tmdb_actor_id} has no name in TMDB data")
+        birthdate, country = fetch_person_details(tmdb_actor_id)
+        upsert_actor(cur, tmdb_actor_id, name, birthdate, country)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
 def fetch_popular_movies(pages=1):
     """回傳 popular 清單中的 movie ids"""
     try:
@@ -172,6 +202,8 @@ if __name__ == "__main__":
         print("Usage:")
         print("  python fetch_tmdb.py <tmdb_movie_id> [tmdb_movie_id ...]")
         print("  python fetch_tmdb.py popular [pages]")
+        print("  python fetch_tmdb.py search movie <query>")
+        print("  python fetch_tmdb.py search actor <query>")
         sys.exit(1)
 
     if not TMDB_API_KEY:
@@ -194,6 +226,42 @@ if __name__ == "__main__":
                 fetch_and_store_movie(int(mid))
             except Exception as e:
                 print(f"Failed to fetch/store movie {mid}: {e}")
+    elif sys.argv[1].lower() == "search":
+        if len(sys.argv) < 4:
+            print("Usage: python fetch_tmdb.py search <type> <query>")
+            print("  <type>: movie or actor")
+            print("  <query>: search query (e.g., 'Inception' or 'Leonardo DiCaprio')")
+            sys.exit(1)
+        
+        search_type = sys.argv[2].lower()
+        query = " ".join(sys.argv[3:])
+        
+        if search_type == "movie":
+            data = fetch_tmdb_data("/search/movie", params={"query": query})
+            results = data.get("results", [])
+            if not results:
+                print(f"No movies found for query '{query}'")
+                sys.exit(1)
+            movie = results[0]  # 取第一個結果
+            tmdb_id = movie.get("id")
+            title = movie.get("title")
+            print(f"Found movie: {title} (ID: {tmdb_id})")
+            fetch_and_store_movie(tmdb_id)
+        elif search_type == "actor":
+            data = fetch_tmdb_data("/search/person", params={"query": query})
+            results = data.get("results", [])
+            if not results:
+                print(f"No actors found for query '{query}'")
+                sys.exit(1)
+            person = results[0]  # 取第一個結果
+            tmdb_id = person.get("id")
+            name = person.get("name")
+            print(f"Found actor: {name} (ID: {tmdb_id})")
+            fetch_and_store_actor(tmdb_id)
+            print("Note: Only basic actor information has been stored. No movie associations have been made. To associate this actor with movies, please use the appropriate functionality separately.")
+        else:
+            print(f"Invalid search type '{search_type}'. Use 'movie' or 'actor'.")
+            sys.exit(1)
     else:
         for mid in sys.argv[1:]:
             try:
