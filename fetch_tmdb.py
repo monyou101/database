@@ -13,7 +13,7 @@ BASE_URL = "https://api.themoviedb.org/3"
 MAX_CAST_MEMBERS = 10
 
 def fetch_tmdb_data(url, params=None):
-    request_params = {"api_key": TMDB_API_KEY}
+    request_params = {"api_key": TMDB_API_KEY, "language": "zh-TW"}
     if params:
         request_params.update(params)
     response = requests.get(f"{BASE_URL}{url}", params=request_params, timeout=10)
@@ -38,13 +38,13 @@ def check_movie(cur, tmdb_id):
         return row[0]  # 已存在，直接回傳 movie_id
     return None  # 明確返回 None 若不存在
 
-def upsert_movie(cur, tmdb_id, title, release_year, genre, rating, poster_url=None):
+def upsert_movie(cur, tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url=None):
     cur.execute("""
-        INSERT INTO `MOVIE` (tmdb_id, title, release_year, genre, rating, poster_url)
-        VALUES (%s,%s,%s,%s,%s,%s)
+        INSERT INTO `MOVIE` (tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE
-          title=VALUES(title), release_year=VALUES(release_year), genre=VALUES(genre), rating=VALUES(rating), poster_url=VALUES(poster_url)
-    """, (tmdb_id, title, release_year, genre, rating, poster_url))
+          title=VALUES(title), release_year=VALUES(release_year), genre=VALUES(genre), runtime=VALUES(runtime), overview=VALUES(overview), rating=VALUES(rating), poster_url=VALUES(poster_url)
+    """, (tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url))
     # 回傳 movie_id
     cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
@@ -99,16 +99,6 @@ def fetch_person_details(person_tmdb_id):
         return None, None
 
 def fetch_and_store_movie(tmdb_movie_id):
-    data = fetch_tmdb_data(f"/movie/{tmdb_movie_id}", params={"append_to_response":"credits,genres"})
-    title = data.get("title")
-    release_year = None
-    if data.get("release_date"):
-        release_year = data["release_date"].split("-")[0]
-    genres = ", ".join([g["name"] for g in data.get("genres", [])]) if data.get("genres") else None
-    rating = data.get("vote_average")
-    poster_path = data.get("poster_path")
-    poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
-
     conn = connect_db()
     cur = conn.cursor()
 
@@ -118,8 +108,20 @@ def fetch_and_store_movie(tmdb_movie_id):
         conn.close()
         return
 
+    data = fetch_tmdb_data(f"/movie/{tmdb_movie_id}", params={"append_to_response":"credits,genres"})
+    title = data.get("title")
+    release_year = None
+    if data.get("release_date"):
+        release_year = data["release_date"].split("-")[0]
+    genres = ", ".join([g["name"] for g in data.get("genres", [])]) if data.get("genres") else None
+    runtime = data.get("runtime")
+    overview = data.get("overview")
+    rating = data.get("vote_average")
+    poster_path = data.get("poster_path")
+    poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
+
     try:
-        movie_id = upsert_movie(cur, tmdb_movie_id, title, release_year, genres, rating, poster_url)
+        movie_id = upsert_movie(cur, tmdb_movie_id, title, release_year, genres, runtime, overview, rating, poster_url)
 
         credits = data.get("credits", {})
         # actors (cast)
@@ -160,9 +162,6 @@ def fetch_and_store_movie(tmdb_movie_id):
         conn.close()
 
 def fetch_and_store_actor(tmdb_actor_id):
-    if not TMDB_API_KEY:
-        raise RuntimeError("TMDB_API_KEY env var not set")
-    
     conn = connect_db()
     cur = conn.cursor()
 

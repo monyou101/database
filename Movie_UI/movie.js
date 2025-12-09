@@ -1,11 +1,5 @@
 const API_KEY = "b2028d2c10f5244b89b1f5e0bb482db3";
-const BASE_URL = "https://api.themoviedb.org/3";
-const IMG_BASE = "https://image.tmdb.org/t/p/w500";
-
-function imgUrl(path) {
-  if (!path) return "https://via.placeholder.com/300x450?text=No+Image";
-  return `${IMG_BASE}${path}`;
-}
+const BASE_URL = "http://127.0.0.1:5000";
 
 function getQueryId() {
   const params = new URLSearchParams(window.location.search);
@@ -17,41 +11,45 @@ async function loadMovieDetail() {
   if (!id) return;
 
   try {
-    const url = `${BASE_URL}/movie/${id}?api_key=${API_KEY}&language=zh-TW&append_to_response=credits,recommendations`;
+    const url = `${BASE_URL}/movies/tmdb/${id}`;
     const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`API error: ${res.status} - ${res.statusText}`);
+    }
     const data = await res.json();
 
+    if (data.error) {
+      console.error("API error:", data.error);
+      document.getElementById("movieOverview").textContent = `錯誤：${data.error}`;
+      return;
+    }
+
     renderMovieDetail(data);
-    renderCast((data.credits && data.credits.cast) || []);
-    renderSimilar((data.recommendations && data.recommendations.results) || []);
+    renderCast(data.actors || []);
+    renderSimilar([]);
   } catch (err) {
     console.error("載入電影詳細資料失敗", err);
   }
 }
 
 function renderMovieDetail(m) {
-  const poster = imgUrl(m.poster_path);
-  const title = m.title || m.original_title || "未命名電影";
-  const year = m.release_date ? m.release_date.slice(0, 4) : "未知年份";
-  const rating = m.vote_average ? m.vote_average.toFixed(1) : "N/A";
+  const poster = m.poster_url || "No_image_available.png";
+  const title = m.title || "未命名電影";
+  const year = m.release_year || "未知年份";
+  const rating = m.rating ? `${m.rating}` : "N/A";
   const runtime = m.runtime ? `${m.runtime} 分鐘` : "片長未知";
-  const genres = (m.genres || []).map(g => g.name).join(" / ") || "未分類";
+  const genres = m.genres || "未分類";
   const overview = m.overview || "尚無簡介。";
 
   // 導演（在 crew 裡找 job = Director）
   let directors = "";
-  if (m.credits && m.credits.crew) {
-    const ds = m.credits.crew.filter(c => c.job === "Director");
-    if (ds.length > 0) {
-      directors = "導演：" + ds.map(d => d.name).join("、");
-    }
+  if (m.directors && m.directors.length > 0) {
+    directors = "導演：" + m.directors.map(d => d.name).join("、");
   }
 
   document.getElementById("moviePoster").src = poster;
   document.getElementById("movieTitle").textContent = title;
-  document.getElementById(
-    "movieMeta"
-  ).textContent = `${year} · TMDB 評分 ${rating}`;
+  document.getElementById("movieMeta").textContent = `${year} · TMDB 評分 ${rating}`;
   document.getElementById("movieGenres").textContent = `類型：${genres}`;
   document.getElementById("movieOverview").textContent = overview;
   document.getElementById("movieRuntime").textContent = runtime;
@@ -61,12 +59,12 @@ function renderMovieDetail(m) {
 
 function renderCast(castList) {
   const box = document.getElementById("movieCast");
-  const top5 = castList.slice(0, 10);
+  const top5 = castList.slice(0, 5);
   box.innerHTML = top5
     .map(c => {
-      const photo = imgUrl(c.profile_path);
+      const photo = c.profile_url || "No_image_available.png";
       const name = c.name || "Unknown";
-      const character = c.character || "";
+      const character = c.character_name || "";
       return `
       <div class="person-card">
         <img src="${photo}" class="person-photo" alt="${name}">
@@ -88,7 +86,7 @@ function renderSimilar(list) {
 
   box.innerHTML = top
     .map(m => {
-      const poster = imgUrl(m.poster_path);
+      const poster = m.poster_url || "No_image_available.png";
       const year = m.release_date ? m.release_date.slice(0, 4) : "未知";
       const rating = m.vote_average ? m.vote_average.toFixed(1) : "N/A";
       return `

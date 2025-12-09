@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 import mysql.connector
 import os
+import fetch_tmdb
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # 生產環境使用強密鑰
@@ -94,6 +95,47 @@ def get_movies():
     cur.close()
     conn.close()
     return jsonify(movies)
+
+def get_tmdb_id_from_movie_id(movie_id):
+    """從 movie_id 獲取 tmdb_id"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT tmdb_id FROM MOVIE WHERE movie_id = %s", (movie_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row[0] if row else None
+
+def get_movie_id_from_tmdb_id(tmdb_id):
+    """從 tmdb_id 獲取 movie_id"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id = %s", (tmdb_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row[0] if row else None
+
+# 新增端點：使用 tmdb_id 查詢電影詳細（若無，自動下載）
+@app.route('/movies/tmdb/<int:tmdb_id>', methods=['GET'])
+def get_movie_by_tmdb_id(tmdb_id):
+    """使用 tmdb_id 獲取電影詳細（若資料庫無，自動從 TMDB 下載）"""
+    movie_id = get_movie_id_from_tmdb_id(tmdb_id)
+    if movie_id:
+        # 資料庫有，直接呼叫現有 get_movie_detail
+        return get_movie_detail(movie_id)
+    else:
+        # 資料庫無，自動下載
+        try:
+            fetch_tmdb.fetch_and_store_movie(tmdb_id)
+            # 下載後重新獲取 movie_id
+            movie_id = get_movie_id_from_tmdb_id(tmdb_id)
+            if movie_id:
+                return get_movie_detail(movie_id)
+            else:
+                return jsonify({'error': 'Failed to retrieve movie after TMDB fetch'}), 500
+        except Exception as e:
+            return jsonify({'error': f'Failed to fetch movie from TMDB: {e}'}), 500
 
 @app.route('/movies/<int:movie_id>', methods=['GET'])
 def get_movie_detail(movie_id):
