@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>電影評分系統 - 首頁</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 頂部導覽列 -->
+  <header class="top-nav">
+    <div class="logo">🎬 Movie Explorer</div>
+    <div class="search-bar">
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="輸入電影名稱（例如：Inception）"
+      />
+      <button onclick="smartSearch()">搜尋</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 搜尋結果 -->
+    <section class="block">
+      <h2>🔎 搜尋結果</h2>
+      <p id="searchMessage" class="hint"></p>
+
+      <!-- 電影搜尋結果 -->
+      <div id="searchMovieSection" class="sub-block hidden">
+        <h3>電影結果</h3>
+        <div id="movieResults" class="grid"></div>
+      </div>
+
+      <!-- 人物搜尋結果（先保留假資料版，可之後改成 TMDB /search/person） -->
+      <div id="searchPeopleSection" class="sub-block hidden">
+        <h3>人物結果（演員 / 導演）</h3>
+        <div id="peopleResults" class="grid"></div>
+      </div>
+    </section>
+
+    <!-- 受歡迎演員 -->
+    <section class="block">
+      <h2>⭐ 受歡迎的演員</h2>
+      <div id="popularActors" class="grid"></div>
+    </section>
+
+    <!-- 受歡迎導演 -->
+    <section class="block">
+      <h2>🎬 受歡迎的導演</h2>
+      <div id="popularDirectors" class="grid"></div>
+    </section>
+
+    <!-- 排行榜：今日熱門、本週熱門、熱映中、即將上映 -->
+    <section class="block">
+      <h2>🔥 排行榜</h2>
+
+      <div class="sub-block">
+        <h3>📅 今日熱門（Trending Today）</h3>
+        <div id="rankTodayRow" class="scroll-row"></div>
+      </div>
+
+      <div class="sub-block">
+        <h3>📆 本週熱門（Trending This Week）</h3>
+        <div id="rankWeekRow" class="scroll-row"></div>
+      </div>
+
+      <div class="sub-block">
+        <h3>🎟 熱映中（Now Playing）</h3>
+        <div id="rankNowRow" class="scroll-row"></div>
+      </div>
+
+      <div class="sub-block">
+        <h3>⏳ 即將上映（Upcoming）</h3>
+        <div id="rankUpcomingRow" class="scroll-row"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 人物 Modal（保留，暫用假資料） -->
+  <div id="personModal" class="modal hidden">
+    <div class="modal-content">
+      <button class="modal-close" onclick="closePersonModal()">✕</button>
+      <div class="modal-body">
+        <div class="modal-left">
+          <img id="personPhoto" class="modal-photo" src="" alt="person">
+        </div>
+        <div class="modal-right">
+          <h2 id="personName"></h2>
+          <p id="personBirth"></p>
+          <p id="personPlace"></p>
+          <p id="personBio" class="bio"></p>
+
+          <h3>代表作品 Known For</h3>
+          <div id="personKnownFor" class="grid"></div>
+
+          <h3>參與電影 Movies</h3>
+          <div id="personMovies" class="grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>資料來源：TMDB API（僅作為課程與學習用途）</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

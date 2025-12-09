@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>電影詳細資訊</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="detail-body">
+  <header class="top-nav">
+    <div class="logo" onclick="window.location.href='index.html'" style="cursor:pointer;">
+      🎬 Movie Explorer
+    </div>
+    <button class="back-btn" onclick="window.location.href='index.html'">← 回首頁</button>
+  </header>
+
+  <main class="detail-container">
+    <!-- 上半部：左海報 + 右資訊 -->
+    <section class="movie-detail-main">
+      <div class="movie-detail-poster">
+        <img id="moviePoster" src="" alt="poster">
+      </div>
+      <div class="movie-detail-info">
+        <h1 id="movieTitle"></h1>
+        <p id="movieMeta" class="movie-meta-line"></p>
+        <p id="movieGenres" class="movie-genres"></p>
+        <p id="movieOverview" class="movie-overview"></p>
+
+        <div class="detail-sub-info">
+          <p id="movieDirectors"></p>
+          <p id="movieRuntime"></p>
+          <p id="movieRating"></p>
+        </div>
+
+        <h2>主要演員 Top Cast</h2>
+        <div id="movieCast" class="scroll-row"></div>
+      </div>
+    </section>
+
+    <!-- 下半部：相似電影 -->
+    <section class="block">
+      <h2>你可能也會喜歡 Similar Movies</h2>
+      <div id="similarMovies" class="scroll-row"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>資料來源：TMDB API（僅作為課程與學習用途）</p>
+  </footer>
+
+  <script src="movie.js"></script>
+</body>
+</html>
