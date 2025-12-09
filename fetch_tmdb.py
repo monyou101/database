@@ -10,6 +10,8 @@ DB_NAME = os.getenv("DB_NAME", "mydb")
 
 BASE_URL = "https://api.themoviedb.org/3"
 
+MAX_CAST_MEMBERS = 10
+
 def fetch_tmdb_data(url, params=None):
     request_params = {"api_key": TMDB_API_KEY}
     if params:
@@ -36,13 +38,13 @@ def check_movie(cur, tmdb_id):
         return row[0]  # 已存在，直接回傳 movie_id
     return None  # 明確返回 None 若不存在
 
-def upsert_movie(cur, tmdb_id, title, release_year, genre, rating):
+def upsert_movie(cur, tmdb_id, title, release_year, genre, rating, poster_url=None):
     cur.execute("""
-        INSERT INTO `MOVIE` (tmdb_id, title, release_year, genre, rating)
-        VALUES (%s,%s,%s,%s,%s)
+        INSERT INTO `MOVIE` (tmdb_id, title, release_year, genre, rating, poster_url)
+        VALUES (%s,%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE
-          title=VALUES(title), release_year=VALUES(release_year), genre=VALUES(genre), rating=VALUES(rating)
-    """, (tmdb_id, title, release_year, genre, rating))
+          title=VALUES(title), release_year=VALUES(release_year), genre=VALUES(genre), rating=VALUES(rating), poster_url=VALUES(poster_url)
+    """, (tmdb_id, title, release_year, genre, rating, poster_url))
     # 回傳 movie_id
     cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
@@ -59,12 +61,12 @@ def check_actor(cur, tmdb_id):
         return row[0]
     return None  # 明確返回 None 若不存在
 
-def upsert_actor(cur, tmdb_id, name, birthdate=None, country=None):
+def upsert_actor(cur, tmdb_id, name, birthdate=None, country=None, profile_url=None):
     cur.execute("""
-        INSERT INTO `ACTOR` (tmdb_id, name, birthdate, country)
-        VALUES (%s,%s,%s,%s)
-        ON DUPLICATE KEY UPDATE name=VALUES(name), birthdate=VALUES(birthdate), country=VALUES(country)
-    """, (tmdb_id, name, birthdate, country))
+        INSERT INTO `ACTOR` (tmdb_id, name, birthdate, country, profile_url)
+        VALUES (%s,%s,%s,%s,%s)
+        ON DUPLICATE KEY UPDATE name=VALUES(name), birthdate=VALUES(birthdate), country=VALUES(country), profile_url=VALUES(profile_url)
+    """, (tmdb_id, name, birthdate, country, profile_url))
     cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
     if row is None:
@@ -104,6 +106,8 @@ def fetch_and_store_movie(tmdb_movie_id):
         release_year = data["release_date"].split("-")[0]
     genres = ", ".join([g["name"] for g in data.get("genres", [])]) if data.get("genres") else None
     rating = data.get("vote_average")
+    poster_path = data.get("poster_path")
+    poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
 
     conn = connect_db()
     cur = conn.cursor()
@@ -115,17 +119,21 @@ def fetch_and_store_movie(tmdb_movie_id):
         return
 
     try:
-        movie_id = upsert_movie(cur, tmdb_movie_id, title, release_year, genres, rating)
+        movie_id = upsert_movie(cur, tmdb_movie_id, title, release_year, genres, rating, poster_url)
 
         credits = data.get("credits", {})
         # actors (cast)
-        for member in credits.get("cast", []):
+        for i, member in enumerate(credits.get("cast", [])):
+            if i >= MAX_CAST_MEMBERS:
+                break
             actor_tmdb_id = member.get("id")
             actor_id = check_actor(cur, actor_tmdb_id)
             if not actor_id:
                 actor_name = member.get("name")
                 birthdate, country = fetch_person_details(actor_tmdb_id)
-                actor_id = upsert_actor(cur, actor_tmdb_id, actor_name, birthdate, country)
+                profile_path = member.get("profile_path")
+                profile_url = f"https://image.tmdb.org/t/p/w500{profile_path}" if profile_path else None
+                actor_id = upsert_actor(cur, actor_tmdb_id, actor_name, birthdate, country, profile_url)
             character = member.get("character")
             order = member.get("order")
             ensure_movie_cast(cur, movie_id, actor_id, character, order)
@@ -138,7 +146,9 @@ def fetch_and_store_movie(tmdb_movie_id):
                 if not director_actor_id:
                     director_name = member.get("name")
                     birthdate, country = fetch_person_details(director_tmdb_id)
-                    director_actor_id = upsert_actor(cur, director_tmdb_id, director_name, birthdate, country)
+                    profile_path = member.get("profile_path")
+                    profile_url = f"https://image.tmdb.org/t/p/w500{profile_path}" if profile_path else None
+                    director_actor_id = upsert_actor(cur, director_tmdb_id, director_name, birthdate, country, profile_url)
                 ensure_director(cur, movie_id, director_actor_id)
 
         conn.commit()

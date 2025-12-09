@@ -14,6 +14,7 @@ CREATE TABLE `MOVIE` (
     `release_year` YEAR DEFAULT NULL,
     `genre` VARCHAR(100) DEFAULT NULL,
     `rating` DECIMAL(3,1) DEFAULT NULL,
+    `poster_url` VARCHAR(255) DEFAULT NULL,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `tmdb_id` INT UNSIGNED DEFAULT NULL,
     UNIQUE KEY `uq_tmdb` (`tmdb_id`)
@@ -24,6 +25,7 @@ CREATE TABLE `ACTOR` (
     `name` VARCHAR(200) NOT NULL,
     `birthdate` DATE DEFAULT NULL,
     `country` VARCHAR(100) DEFAULT NULL,
+    `profile_url` VARCHAR(255) DEFAULT NULL,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `tmdb_id` INT UNSIGNED DEFAULT NULL,
     UNIQUE KEY `uq_tmdb` (`tmdb_id`)
