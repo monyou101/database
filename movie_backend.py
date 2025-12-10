@@ -20,40 +20,41 @@ def get_db_connection():
     )
 
 # 用戶認證 API（匹配 UI 登入/註冊功能）
-@app.route('/register', methods=['POST'])
+@app.route('/auth/register', methods=['POST'])
 def register():
     """用戶註冊"""
     data = request.json
-    username = data.get('username')
+    # username = data.get('username')
     email = data.get('email')
     password = data.get('password')  # 實際應 hash，例如使用 bcrypt
     
-    if not all([username, email, password]):
+    if not all([email, password]):
         return jsonify({'error': 'Missing fields'}), 400
     
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute("INSERT INTO USER (username, email, password_hash) VALUES (%s, %s, %s)", (username, email, password))
+        cur.execute("INSERT INTO USER (username, email, password_hash) VALUES (%s, %s, %s)", (email, email, password))
         conn.commit()
-        return jsonify({'message': 'User registered successfully'}), 201
+        return jsonify({'success': True, 'message': 'User registered successfully'}), 201
     except Exception as e:
         conn.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         cur.close()
         conn.close()
 
-@app.route('/login', methods=['POST'])
+@app.route('/auth/login', methods=['POST'])
 def login():
     """用戶登入"""
     data = request.json
-    username = data.get('username')
+    # username = data.get('username')
+    email = data.get('email')
     password = data.get('password')
     
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT user_id, username FROM USER WHERE username = %s AND password_hash = %s", (username, password))
+    cur.execute("SELECT user_id, username FROM USER WHERE email = %s AND password_hash = %s", (email, password))
     user = cur.fetchone()
     cur.close()
     conn.close()
@@ -61,10 +62,10 @@ def login():
     if user:
         session['user_id'] = user['user_id']
         session['username'] = user['username']
-        return jsonify({'user_id': user['user_id'], 'username': user['username']})
-    return jsonify({'error': 'Invalid credentials'}), 401
+        return jsonify({'success': True, 'token': 'dummy_token', 'user_email': email})
+    return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
 
-@app.route('/logout', methods=['POST'])
+@app.route('/auth/logout', methods=['POST'])
 def logout():
     """用戶登出"""
     session.clear()
