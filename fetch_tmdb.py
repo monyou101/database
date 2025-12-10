@@ -2,12 +2,7 @@ import os
 import requests
 import mysql.connector
 
-TMDB_API_KEY = os.getenv("TMDB_API_KEY", "eb1fb6b7c15b25a9d9784a0dd8b38681")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_USER = os.getenv("DB_USER", "myuser")
-DB_PASS = os.getenv("DB_PASS", "myuser")
-DB_NAME = os.getenv("DB_NAME", "mydb")
-
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 BASE_URL = "https://api.themoviedb.org/3"
 
 MAX_CAST_MEMBERS = 10
@@ -26,9 +21,25 @@ def fetch_tmdb_data(url, params=None):
     return response.json()
 
 def connect_db():
-    return mysql.connector.connect(
-        host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME, autocommit=False
-    )
+    # 使用 Railway 的 MYSQL_URL 或個別變數
+    mysql_url = os.getenv("MYSQL_URL")  # e.g., mysql://user:pass@host:port/db
+    if mysql_url:
+        # 解析 URL（或用 mysql.connector 直接解析）
+        return mysql.connector.connect(
+            host=os.getenv("MYSQLHOST"),
+            database=os.getenv("MYSQLDATABASE"),
+            user=os.getenv("MYSQLUSER"),
+            password=os.getenv("MYSQLPASSWORD"),
+            port=os.getenv("MYSQLPORT", 3306)
+        )
+    else:
+        # 備用：個別變數
+        return mysql.connector.connect(
+            host=os.getenv("DB_HOST", "localhost"),
+            user=os.getenv("DB_USER", "myuser"),
+            password=os.getenv("DB_PASS", "myuser"),
+            database=os.getenv("DB_NAME", "mydb")
+        )
 
 def check_movie(cur, tmdb_id):
     # 先檢查是否存在，避免重複插入時消耗 AUTO_INCREMENT

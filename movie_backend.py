@@ -4,20 +4,9 @@ import mysql.connector
 import os
 import fetch_tmdb
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
 app.secret_key = 'your_secret_key'  # 生產環境使用強密鑰
 CORS(app)  # 允許前端跨域請求
-
-# 資料庫連線設定（從環境變數讀取）
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_USER = os.getenv("DB_USER", "myuser")
-DB_PASS = os.getenv("DB_PASS", "myuser")
-DB_NAME = os.getenv("DB_NAME", "mydb")
-
-def get_db_connection():
-    return mysql.connector.connect(
-        host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME
-    )
 
 # 用戶認證 API（匹配 UI 登入/註冊功能）
 @app.route('/auth/register', methods=['POST'])
@@ -31,7 +20,7 @@ def register():
     if not all([email, password]):
         return jsonify({'error': 'Missing fields'}), 400
     
-    conn = get_db_connection()
+    conn = fetch_tmdb.connect_db()
     cur = conn.cursor()
     try:
         cur.execute("INSERT INTO USER (username, email, password_hash) VALUES (%s, %s, %s)", (email, email, password))
@@ -52,7 +41,7 @@ def login():
     email = data.get('email')
     password = data.get('password')
     
-    conn = get_db_connection()
+    conn = fetch_tmdb.connect_db()
     cur = conn.cursor(dictionary=True)
     cur.execute("SELECT user_id, username FROM USER WHERE email = %s AND password_hash = %s", (email, password))
     user = cur.fetchone()
@@ -80,7 +69,7 @@ def get_movies():
     limit = int(request.args.get('limit', 20))
     offset = (page - 1) * limit
     
-    conn = get_db_connection()
+    conn = fetch_tmdb.connect_db()
     cur = conn.cursor(dictionary=True)
     
     sql = """
@@ -99,7 +88,7 @@ def get_movies():
 
 def get_tmdb_id_from_movie_id(movie_id):
     """從 movie_id 獲取 tmdb_id"""
-    conn = get_db_connection()
+    conn = fetch_tmdb.connect_db()
     cur = conn.cursor()
     cur.execute("SELECT tmdb_id FROM MOVIE WHERE movie_id = %s", (movie_id,))
     row = cur.fetchone()
@@ -109,7 +98,7 @@ def get_tmdb_id_from_movie_id(movie_id):
 
 def get_movie_id_from_tmdb_id(tmdb_id):
     """從 tmdb_id 獲取 movie_id"""
-    conn = get_db_connection()
+    conn = fetch_tmdb.connect_db()
     cur = conn.cursor()
     cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id = %s", (tmdb_id,))
     row = cur.fetchone()
@@ -141,7 +130,7 @@ def get_movie_by_tmdb_id(tmdb_id):
 @app.route('/movies/<int:movie_id>', methods=['GET'])
 def get_movie_detail(movie_id):
     """獲取電影詳細資訊（匹配 Movie.html 詳細頁）"""
-    conn = get_db_connection()
+    conn = fetch_tmdb.connect_db()
     cur = conn.cursor(dictionary=True)
     
     # 電影基本資訊
@@ -195,7 +184,7 @@ def get_actors():
     limit = int(request.args.get('limit', 20))
     offset = (page - 1) * limit
     
-    conn = get_db_connection()
+    conn = fetch_tmdb.connect_db()
     cur = conn.cursor(dictionary=True)
     
     sql = """
@@ -215,7 +204,7 @@ def get_actors():
 @app.route('/actors/<int:actor_id>', methods=['GET'])
 def get_actor_detail(actor_id):
     """獲取演員詳細資訊（若 UI 有演員詳細頁）"""
-    conn = get_db_connection()
+    conn = fetch_tmdb.connect_db()
     cur = conn.cursor(dictionary=True)
     
     # 演員基本資訊
@@ -267,7 +256,7 @@ def add_review():
     if not all([target_type, target_id, rating]):
         return jsonify({'error': 'Missing required fields'}), 400
     
-    conn = get_db_connection()
+    conn = fetch_tmdb.connect_db()
     cur = conn.cursor()
     
     try:
@@ -289,7 +278,7 @@ def get_popular_movies():
     """獲取熱門電影（匹配主頁熱門清單）"""
     limit = int(request.args.get('limit', 10))
     
-    conn = get_db_connection()
+    conn = fetch_tmdb.connect_db()
     cur = conn.cursor(dictionary=True)
     
     cur.execute("""
@@ -305,4 +294,4 @@ def get_popular_movies():
     return jsonify(movies)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))

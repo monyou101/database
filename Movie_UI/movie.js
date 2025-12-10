@@ -1,4 +1,3 @@
-const API_KEY = "b2028d2c10f5244b89b1f5e0bb482db3";
 const BASE_URL = "http://127.0.0.1:5000";
 
 function getQueryId() {

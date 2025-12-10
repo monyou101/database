@@ -1,5 +1,5 @@
 // ======= TMDB 基本設定 =======
-const API_KEY = "b2028d2c10f5244b89b1f5e0bb482db3";
+const API_KEY = process.env.TMDB_API_KEY;
 const BASE_URL = "https://api.themoviedb.org/3";
 const IMG_BASE = "https://image.tmdb.org/t/p/w500";
 
