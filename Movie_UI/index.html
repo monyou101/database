@@ -13,7 +13,7 @@
       <input
         type="text"
         id="searchInput"
-        placeholder="輸入電影名稱（例如：Inception）"
+        placeholder="輸入電影/人物名稱（例如：Inception）"
       />
       <button onclick="smartSearch()">搜尋</button>
     </div>
@@ -29,7 +29,7 @@
 
   <main class="container">
     <!-- 搜尋結果 -->
-    <section class="block">
+    <section id="searchResultsSection" class="block hidden">
       <h2>🔎 搜尋結果</h2>
       <p id="searchMessage" class="hint"></p>
 
@@ -39,9 +39,9 @@
         <div id="movieResults" class="grid"></div>
       </div>
 
-      <!-- 人物搜尋結果（先保留假資料版，可之後改成 TMDB /search/person） -->
+      <!-- 人物搜尋結果 -->
       <div id="searchPeopleSection" class="sub-block hidden">
-        <h3>人物結果（演員 / 導演）</h3>
+        <h3>人物結果</h3>
         <div id="peopleResults" class="grid"></div>
       </div>
     </section>
@@ -169,4 +169,5 @@
   </script>
 
   <script src="app.js"></script>
+  <script src="auth.js"></script>
 </body> </html>
