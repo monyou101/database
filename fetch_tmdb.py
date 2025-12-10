@@ -61,12 +61,33 @@ def check_actor(cur, tmdb_id):
         return row[0]
     return None  # 明確返回 None 若不存在
 
-def upsert_actor(cur, tmdb_id, name, birthdate=None, country=None, profile_url=None):
+def check_actor_detail(cur, actor_id):
+    if actor_id is not None:
+        cur.execute("SELECT birthdate FROM ACTOR WHERE actor_id=%s", (actor_id,))
+        row = cur.fetchone()
+        if row:
+            return True
+    return False
+
+def upsert_actor(cur, tmdb_id, name, profile_url=None):
     cur.execute("""
-        INSERT INTO `ACTOR` (tmdb_id, name, birthdate, country, profile_url)
+        INSERT INTO `ACTOR` (tmdb_id, name, profile_url)
+        VALUES (%s,%s,%s)
+        ON DUPLICATE KEY UPDATE name=VALUES(name), profile_url=VALUES(profile_url)
+    """, (tmdb_id, name, profile_url))
+    cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
+    row = cur.fetchone()
+    if row is None:
+        raise RuntimeError(f"Failed to fetch actor_id for tmdb_id={tmdb_id}")
+    print(f"Stored actor {name} (actor_id={row[0]})")
+    return row[0]
+
+def upsert_actor_detail(cur, tmdb_id, name, profile_url=None, birthdate=None, country=None):
+    cur.execute("""
+        INSERT INTO `ACTOR` (tmdb_id, name, profile_url, birthdate, country)
         VALUES (%s,%s,%s,%s,%s)
-        ON DUPLICATE KEY UPDATE name=VALUES(name), birthdate=VALUES(birthdate), country=VALUES(country), profile_url=VALUES(profile_url)
-    """, (tmdb_id, name, birthdate, country, profile_url))
+        ON DUPLICATE KEY UPDATE name=VALUES(name), profile_url=VALUES(profile_url), birthdate=VALUES(birthdate), country=VALUES(country)
+    """, (tmdb_id, name, profile_url, birthdate, country))
     cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
     if row is None:
@@ -125,17 +146,14 @@ def fetch_and_store_movie(tmdb_movie_id):
 
         credits = data.get("credits", {})
         # actors (cast)
-        for i, member in enumerate(credits.get("cast", [])):
-            if i >= MAX_CAST_MEMBERS:
-                break
+        for member in credits.get("cast", []):
             actor_tmdb_id = member.get("id")
             actor_id = check_actor(cur, actor_tmdb_id)
-            if not actor_id:
+            if actor_id is None:
                 actor_name = member.get("name")
-                birthdate, country = fetch_person_details(actor_tmdb_id)
                 profile_path = member.get("profile_path")
                 profile_url = f"https://image.tmdb.org/t/p/w500{profile_path}" if profile_path else None
-                actor_id = upsert_actor(cur, actor_tmdb_id, actor_name, birthdate, country, profile_url)
+                actor_id = upsert_actor(cur, actor_tmdb_id, actor_name, profile_url)
             character = member.get("character")
             order = member.get("order")
             ensure_movie_cast(cur, movie_id, actor_id, character, order)
@@ -145,12 +163,11 @@ def fetch_and_store_movie(tmdb_movie_id):
             if member.get("job") == "Director":
                 director_tmdb_id = member.get("id")
                 director_actor_id = check_actor(cur, director_tmdb_id)
-                if not director_actor_id:
+                if director_actor_id is None:
                     director_name = member.get("name")
-                    birthdate, country = fetch_person_details(director_tmdb_id)
                     profile_path = member.get("profile_path")
                     profile_url = f"https://image.tmdb.org/t/p/w500{profile_path}" if profile_path else None
-                    director_actor_id = upsert_actor(cur, director_tmdb_id, director_name, birthdate, country, profile_url)
+                    director_actor_id = upsert_actor(cur, director_tmdb_id, director_name, profile_url)
                 ensure_director(cur, movie_id, director_actor_id)
 
         conn.commit()
@@ -165,7 +182,8 @@ def fetch_and_store_actor(tmdb_actor_id):
     conn = connect_db()
     cur = conn.cursor()
 
-    if check_actor(cur, tmdb_actor_id):
+    actor_id = check_actor(cur, tmdb_actor_id)
+    if check_actor_detail(cur, actor_id):
         print(f"Actor with tmdb_id {tmdb_actor_id} already exists, skipping.")
         cur.close()
         conn.close()
@@ -174,10 +192,10 @@ def fetch_and_store_actor(tmdb_actor_id):
     try:
         data = fetch_tmdb_data(f"/person/{tmdb_actor_id}")
         name = data.get("name")
-        if not name:
-            raise ValueError(f"Actor {tmdb_actor_id} has no name in TMDB data")
+        profile_path = data.get("profile_path")
+        profile_url = f"https://image.tmdb.org/t/p/w500{profile_path}" if profile_path else None
         birthdate, country = fetch_person_details(tmdb_actor_id)
-        upsert_actor(cur, tmdb_actor_id, name, birthdate, country)
+        upsert_actor_detail(cur, tmdb_actor_id, name, profile_url, birthdate, country)
         print("Note: Only basic actor information has been stored. No movie associations have been made." \
         " To associate this actor with movies, please use the appropriate functionality separately.")
         conn.commit()
