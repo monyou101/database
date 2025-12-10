@@ -17,6 +17,14 @@
       />
       <button onclick="smartSearch()">搜尋</button>
     </div>
+    <div class="user-actions">
+  <button id="loginBtn" onclick="openAuthModal()">登入 / 註冊</button>
+  
+  <div id="userInfo" class="hidden" style="display: flex; gap: 10px; align-items: center;">
+    <span id="userEmailDisplay">user@example.com</span>
+    <button onclick="logout()">登出</button>
+  </div>
+</div>
   </header>
 
   <main class="container">
@@ -39,13 +47,13 @@
     </section>
 
     <!-- 受歡迎演員 -->
-    <section class="block">
+    <section class="block"style="display: none;">
       <h2>⭐ 受歡迎的演員</h2>
       <div id="popularActors" class="grid"></div>
     </section>
 
     <!-- 受歡迎導演 -->
-    <section class="block">
+    <section class="block"style="display: none;">
       <h2>🎬 受歡迎的導演</h2>
       <div id="popularDirectors" class="grid"></div>
     </section>
@@ -103,7 +111,62 @@
   <footer class="footer">
     <p>資料來源：TMDB API（僅作為課程與學習用途）</p>
   </footer>
+<div id="authModal" class="modal hidden">
+    <div class="modal-content" style="max-width: 400px;">
+      <button class="modal-close" onclick="closeAuthModal()">✕</button>
+      
+      <div class="auth-tabs" style="display: flex; justify-content: space-around; margin-bottom: 20px; border-bottom: 1px solid #333;">
+        <h3 id="tabLogin" onclick="switchTab('login')" style="cursor: pointer; color: #f97316;">登入</h3>
+        <h3 id="tabRegister" onclick="switchTab('register')" style="cursor: pointer; color: #9ca3af;">註冊</h3>
+      </div>
+
+      <div id="formLogin">
+        <input type="email" id="loginEmail" placeholder="電子信箱" class="auth-input">
+        <input type="password" id="loginPwd" placeholder="密碼" class="auth-input">
+        <button onclick="doLogin()" class="auth-submit">登入</button>
+      </div>
+
+      <div id="formRegister" class="hidden">
+        <div style="display: flex; gap: 8px;">
+          <input type="email" id="regEmail" placeholder="輸入電子信箱" class="auth-input" style="flex: 1;">
+          <button onclick="sendVerifyCode()" class="small-btn">傳送驗證碼</button>
+        </div>
+        <input type="text" id="regCode" placeholder="輸入信箱驗證碼" class="auth-input">
+       <div style="position: relative; width: 100%;">
+  <input type="password" id="regPwd" placeholder="設定密碼" class="auth-input" style="width: 100%; padding-right: 40px; box-sizing: border-box;">
+  
+  <span id="togglePwdBtn" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; user-select: none;">
+    👁️
+  </span>
+</div>
+        <button onclick="doRegister()" class="auth-submit">註冊</button>
+      </div>
+      
+      <p id="authMsg" style="color: red; margin-top: 10px; font-size: 14px; text-align: center;"></p>
+    </div>
+  </div>
+
+  <div id="confirmEmailModal" class="modal hidden" style="z-index: 60;">
+    <div class="modal-content" style="max-width: 350px; text-align: center; border: 1px solid #f97316;">
+      <h3 style="margin-bottom: 12px;">📧 確認您的信箱</h3>
+      <p style="color: #ccc;">驗證碼將發送至：</p>
+      
+      <p id="confirmEmailDisplay" style="color: #f97316; font-weight: bold; font-size: 18px; margin: 12px 0; word-break: break-all;"></p>
+      
+      <div style="display: flex; justify-content: center; gap: 12px; margin-top: 20px;">
+        <button onclick="closeConfirmModal()" class="small-btn" style="padding: 8px 20px;">有寫錯，返回</button>
+        <button onclick="executeSendEmail()" class="auth-submit" style="width: auto; padding: 8px 20px;">沒錯，發送</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <script type="text/javascript">
+     (function(){
+        // 您的 Public Key (來自您的檔案)
+        emailjs.init("jWESQ9IlaTXKXTc-_");
+     })();
+  </script>
 
   <script src="app.js"></script>
-</body>
-</html>
+</body> </html>
