@@ -1,6 +1,6 @@
 // ======= TMDB 基本設定 =======
 const IMG_BASE = "https://image.tmdb.org/t/p/w500";
-const BACKEND_URL = "http://127.0.0.1:5000";
+const BACKEND_URL = "https://database-production-55fc.up.railway.app";
 
 function imgUrl(path) {
   if (!path) return "No_image_available.png";

@@ -1,5 +1,5 @@
 // ======= 會員系統邏輯 =======
-const AUTH_URL = "http://127.0.0.1:5000"; // 指向您的 Python 後端
+const AUTH_URL = "https://database-production-55fc.up.railway.app"; // 指向您的 Python 後端
 
 // 檢查登入狀態 (初始化)
 function checkLoginStatus() {
