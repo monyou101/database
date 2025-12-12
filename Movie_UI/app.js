@@ -1,7 +1,6 @@
 // ======= TMDB 基本設定 =======
-const API_KEY = process.env.TMDB_API_KEY;
-const BASE_URL = "https://api.themoviedb.org/3";
 const IMG_BASE = "https://image.tmdb.org/t/p/w500";
+const BACKEND_URL = "http://127.0.0.1:5000";
 
 function imgUrl(path) {
   if (!path) return "No_image_available.png";
@@ -17,7 +16,7 @@ async function smartSearch() {
   const searchResultsSection = document.getElementById("searchResultsSection");
 
   if (!input) {
-    message.textContent = "請輸入電影名稱。";
+    message.textContent = "請輸入電影/人物名稱。";
     movieSection.classList.add("hidden");
     peopleSection.classList.add("hidden");
     return;
@@ -26,18 +25,12 @@ async function smartSearch() {
   message.textContent = "搜尋中…";
   searchResultsSection.classList.remove("hidden");
 
-  // 電影搜尋（TMDB）
   try {
-    url = `${BASE_URL}/search/movie?api_key=${API_KEY}&language=zh-TW&query=${encodeURIComponent(input)}`;
-    res = await fetch(url);
-    data = await res.json();
-    const movieResults = (data.results || []).slice(0, 12);
-
-    // 人物搜尋（TMDB）
-    url = `${BASE_URL}/search/person?api_key=${API_KEY}&language=zh-TW&query=${encodeURIComponent(input)}`;
-    res = await fetch(url);
-    data = await res.json();
-    const peopleResults = (data.results || []).slice(0, 12);
+    const res = await fetch(`${BACKEND_URL}/api/search/all?query=${encodeURIComponent(input)}`);
+    const data = await res.json();
+    
+    const movieResults = (data.movie.results || []).slice(0, 12);
+    const peopleResults = (data.person.results || []).slice(0, 12);
 
     if (movieResults.length === 0 && peopleResults.length === 0) {
       message.textContent = "查無相關電影或人物。";
@@ -111,33 +104,14 @@ function showPeopleListFromAPI(list, targetId) {
 // ======= 排行榜：今日、本週、熱映中、即將上映 =======
 async function loadTrending() {
   try {
-    // 今日熱門
-    const dayRes = await fetch(
-      `${BASE_URL}/trending/movie/day?api_key=${API_KEY}&language=zh-TW`
-    );
-    const dayData = await dayRes.json();
-    showRankRow(dayData.results || [], "rankTodayRow");
-
-    // 本週熱門
-    const weekRes = await fetch(
-      `${BASE_URL}/trending/movie/week?api_key=${API_KEY}&language=zh-TW`
-    );
-    const weekData = await weekRes.json();
-    showRankRow(weekData.results || [], "rankWeekRow");
-
-    // 熱映中 Now Playing
-    const nowRes = await fetch(
-      `${BASE_URL}/movie/now_playing?api_key=${API_KEY}&language=zh-TW&region=TW`
-    );
-    const nowData = await nowRes.json();
-    showRankRow(nowData.results || [], "rankNowRow");
-
-    // 即將上映 Upcoming
-    const upRes = await fetch(
-      `${BASE_URL}/movie/upcoming?api_key=${API_KEY}&language=zh-TW&region=TW`
-    );
-    const upData = await upRes.json();
-    showRankRow(upData.results || [], "rankUpcomingRow");
+    // 並發獲取所有 trending 資料（通過後端新端點）
+    const res = await fetch(`${BACKEND_URL}/api/trending/all`);
+    const data = await res.json();
+    
+    showRankRow(data.day.results || [], "rankTodayRow");
+    showRankRow(data.week.results || [], "rankWeekRow");
+    showRankRow(data.now_playing.results || [], "rankNowRow");
+    showRankRow(data.upcoming.results || [], "rankUpcomingRow");
   } catch (err) {
     console.error("載入排行榜失敗", err);
   }

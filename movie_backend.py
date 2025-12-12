@@ -1,12 +1,15 @@
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
-import mysql.connector
+from flask_compress import Compress  # 新增壓縮
 import os
-import fetch_tmdb
+import concurrent.futures  # 新增並發
+from database import connect_db, fetch_and_store_movie, get_movie_id_from_tmdb_id
+from tmdb_api import fetch_tmdb_data
 
 app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
 app.secret_key = 'your_secret_key'  # 生產環境使用強密鑰
 CORS(app)  # 允許前端跨域請求
+Compress(app)  # 自動壓縮 JSON 回應
 
 # 用戶認證 API（匹配 UI 登入/註冊功能）
 @app.route('/auth/register', methods=['POST'])
@@ -20,7 +23,7 @@ def register():
     if not all([email, password]):
         return jsonify({'error': 'Missing fields'}), 400
     
-    conn = fetch_tmdb.connect_db()
+    conn = connect_db()
     cur = conn.cursor()
     try:
         cur.execute("INSERT INTO USER (username, email, password_hash) VALUES (%s, %s, %s)", (email, email, password))
@@ -41,7 +44,7 @@ def login():
     email = data.get('email')
     password = data.get('password')
     
-    conn = fetch_tmdb.connect_db()
+    conn = connect_db()
     cur = conn.cursor(dictionary=True)
     cur.execute("SELECT user_id, username FROM USER WHERE email = %s AND password_hash = %s", (email, password))
     user = cur.fetchone()
@@ -69,7 +72,7 @@ def get_movies():
     limit = int(request.args.get('limit', 20))
     offset = (page - 1) * limit
     
-    conn = fetch_tmdb.connect_db()
+    conn = connect_db()
     cur = conn.cursor(dictionary=True)
     
     sql = """
@@ -86,26 +89,6 @@ def get_movies():
     conn.close()
     return jsonify(movies)
 
-def get_tmdb_id_from_movie_id(movie_id):
-    """從 movie_id 獲取 tmdb_id"""
-    conn = fetch_tmdb.connect_db()
-    cur = conn.cursor()
-    cur.execute("SELECT tmdb_id FROM MOVIE WHERE movie_id = %s", (movie_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row[0] if row else None
-
-def get_movie_id_from_tmdb_id(tmdb_id):
-    """從 tmdb_id 獲取 movie_id"""
-    conn = fetch_tmdb.connect_db()
-    cur = conn.cursor()
-    cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id = %s", (tmdb_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row[0] if row else None
-
 # 新增端點：使用 tmdb_id 查詢電影詳細（若無，自動下載）
 @app.route('/movies/tmdb/<int:tmdb_id>', methods=['GET'])
 def get_movie_by_tmdb_id(tmdb_id):
@@ -117,7 +100,7 @@ def get_movie_by_tmdb_id(tmdb_id):
     else:
         # 資料庫無，自動下載
         try:
-            fetch_tmdb.fetch_and_store_movie(tmdb_id)
+            fetch_and_store_movie(tmdb_id)
             # 下載後重新獲取 movie_id
             movie_id = get_movie_id_from_tmdb_id(tmdb_id)
             if movie_id:
@@ -130,7 +113,7 @@ def get_movie_by_tmdb_id(tmdb_id):
 @app.route('/movies/<int:movie_id>', methods=['GET'])
 def get_movie_detail(movie_id):
     """獲取電影詳細資訊（匹配 Movie.html 詳細頁）"""
-    conn = fetch_tmdb.connect_db()
+    conn = connect_db()
     cur = conn.cursor(dictionary=True)
     
     # 電影基本資訊
@@ -184,7 +167,7 @@ def get_actors():
     limit = int(request.args.get('limit', 20))
     offset = (page - 1) * limit
     
-    conn = fetch_tmdb.connect_db()
+    conn = connect_db()
     cur = conn.cursor(dictionary=True)
     
     sql = """
@@ -204,7 +187,7 @@ def get_actors():
 @app.route('/actors/<int:actor_id>', methods=['GET'])
 def get_actor_detail(actor_id):
     """獲取演員詳細資訊（若 UI 有演員詳細頁）"""
-    conn = fetch_tmdb.connect_db()
+    conn = connect_db()
     cur = conn.cursor(dictionary=True)
     
     # 演員基本資訊
@@ -256,7 +239,7 @@ def add_review():
     if not all([target_type, target_id, rating]):
         return jsonify({'error': 'Missing required fields'}), 400
     
-    conn = fetch_tmdb.connect_db()
+    conn = connect_db()
     cur = conn.cursor()
     
     try:
@@ -278,7 +261,7 @@ def get_popular_movies():
     """獲取熱門電影（匹配主頁熱門清單）"""
     limit = int(request.args.get('limit', 10))
     
-    conn = fetch_tmdb.connect_db()
+    conn = connect_db()
     cur = conn.cursor(dictionary=True)
     
     cur.execute("""
@@ -293,5 +276,83 @@ def get_popular_movies():
     conn.close()
     return jsonify(movies)
 
+def fetch_tmdb_concurrent(urls_params):
+    def fetch_single(url, params):
+        return fetch_tmdb_data(url, params)
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(fetch_single, url, params) for url, params in urls_params]
+        # 保持結果順序，初始化為 None
+        results = [None] * len(futures)
+        for idx, future in enumerate(futures):
+            try:
+                results[idx] = future.result()
+            except Exception as e:
+                results[idx] = {'error': str(e)}
+    return results
+
+@app.route('/api/search/movie', methods=['GET'])
+def search_movie():
+    query = request.args.get('query')
+    if not query:
+        return jsonify({'error': 'Missing query'}), 400
+    data = fetch_tmdb_data('/search/movie', {'query': query})
+    return jsonify(data)
+
+@app.route('/api/search/person', methods=['GET'])
+def search_person():
+    query = request.args.get('query')
+    if not query:
+        return jsonify({'error': 'Missing query'}), 400
+    data = fetch_tmdb_data('/search/person', {'query': query})
+    return jsonify(data)
+
+@app.route('/api/search/all', methods=['GET'])
+def search_all():
+    query = request.args.get('query')
+    if not query:
+        return jsonify({'error': 'Missing query'}), 400
+    
+    urls_params = [
+        ('/search/movie', {'query': query}),
+        ('/search/person', {'query': query})
+    ]
+    results = fetch_tmdb_concurrent(urls_params)
+    return jsonify({
+        'movie': results[0],
+        'person': results[1]
+    })
+
+@app.route('/api/trending/movie/<path:time_window>', methods=['GET'])
+def trending_movie(time_window):
+    if time_window not in ['day', 'week']:
+        return jsonify({'error': 'Invalid time_window'}), 400
+    data = fetch_tmdb_data(f'/trending/movie/{time_window}')
+    return jsonify(data)
+
+@app.route('/api/movie/<path:endpoint>', methods=['GET'])
+def movie_endpoint(endpoint):
+    if endpoint not in ['now_playing', 'upcoming']:
+        return jsonify({'error': 'Invalid endpoint'}), 400
+    params = {'region': 'TW'}
+    data = fetch_tmdb_data(f'/movie/{endpoint}', params)
+    return jsonify(data)
+
+@app.route('/api/trending/all', methods=['GET'])
+def trending_all():
+    urls_params = [
+        ('/trending/movie/day', {}),
+        ('/trending/movie/week', {}),
+        ('/movie/now_playing', {'region': 'TW'}),
+        ('/movie/upcoming', {'region': 'TW'})
+    ]
+    results = fetch_tmdb_concurrent(urls_params)
+    return jsonify({
+        'day': results[0],
+        'week': results[1],
+        'now_playing': results[2],
+        'upcoming': results[3]
+    })
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
+    app.run(debug=True)
