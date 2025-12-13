@@ -3,7 +3,7 @@ from flask_cors import CORS
 from flask_compress import Compress  # 新增壓縮
 import os
 import concurrent.futures  # 新增並發
-from database import connect_db, fetch_and_store_movie, get_movie_id_from_tmdb_id, fetch_and_store_actor, get_actor_id_from_tmdb_id
+from database import connect_db, fetch_and_store_movie, get_movie_id_from_tmdb_id, fetch_and_store_actor, get_actor_id_from_tmdb_id, get_tmdb_id_from_actor_id
 from tmdb_api import fetch_tmdb_data
 
 app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
@@ -90,20 +90,15 @@ def get_movies():
 
 @app.route('/movies/tmdb/<int:tmdb_id>', methods=['GET'])
 def get_movie_by_tmdb_id(tmdb_id):
-    """使用 tmdb_id 獲取電影詳細（若資料庫無，自動從 TMDB 下載）"""
-    movie_id = get_movie_id_from_tmdb_id(tmdb_id)
-    if movie_id:
-        return get_movie_detail(movie_id)
-    else:
-        try:
-            fetch_and_store_movie(tmdb_id)
-            movie_id = get_movie_id_from_tmdb_id(tmdb_id)
-            if movie_id:
-                return get_movie_detail(movie_id)
-            else:
-                return jsonify({'error': 'Failed to retrieve movie after TMDB fetch'}), 500
-        except Exception as e:
-            return jsonify({'error': f'Failed to fetch movie from TMDB: {e}'}), 500
+    try:
+        fetch_and_store_movie(tmdb_id)
+        movie_id = get_movie_id_from_tmdb_id(tmdb_id)
+        if movie_id:
+            return get_movie_detail(movie_id)
+        else:
+            return jsonify({'error': 'Failed to retrieve movie after TMDB fetch'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Failed to fetch movie from TMDB: {e}'}), 500
 
 @app.route('/movies/<int:movie_id>', methods=['GET'])
 def get_movie_detail(movie_id):
@@ -181,22 +176,20 @@ def get_actors():
 
 @app.route('/actors/tmdb/<int:tmdb_id>', methods=['GET'])
 def get_actor_by_tmdb_id(tmdb_id):
-    movie_id = get_actor_id_from_tmdb_id(tmdb_id)
-    if movie_id:
-        return get_actor_detail(movie_id)
-    else:
-        try:
-            fetch_and_store_actor(tmdb_id)
-            movie_id = get_actor_id_from_tmdb_id(tmdb_id)
-            if movie_id:
-                return get_actor_detail(movie_id)
-            else:
-                return jsonify({'error': 'Failed to retrieve movie after TMDB fetch'}), 500
-        except Exception as e:
-            return jsonify({'error': f'Failed to fetch movie from TMDB: {e}'}), 500
+    try:
+        fetch_and_store_actor(tmdb_id)
+        actor_id = get_actor_id_from_tmdb_id(tmdb_id)
+        if actor_id:
+            return get_actor_detail(actor_id)
+        else:
+            return jsonify({'error': 'Failed to retrieve movie after TMDB fetch'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Failed to fetch movie from TMDB: {e}'}), 500
 
 @app.route('/actors/<int:actor_id>', methods=['GET'])
 def get_actor_detail(actor_id):
+    tmdb_id = get_tmdb_id_from_actor_id(actor_id)
+    fetch_and_store_actor(tmdb_id)
     """獲取演員詳細資訊（若 UI 有演員詳細頁）"""
     conn = connect_db()
     cur = conn.cursor(dictionary=True)

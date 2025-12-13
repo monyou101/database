@@ -75,7 +75,7 @@ function renderCast(castList) {
       const photo = c.profile_url || "No_image_available.png";
       const name = c.name || "Unknown";
       const character = c.character_name || "";
-      const id = c.id; // ★ 重點：取得演員 ID
+      const id = c.actor_id; // ★ 重點：取得演員 ID
 
       // 處理特殊字元，避免 onclick 報錯
       const safeName = name.replace(/'/g, "\\'");
@@ -98,7 +98,7 @@ async function fetchPersonDetail(personId) {
   if (!personId) return null;
   try {
     // 假設後端有這個路徑，如果沒有會跳到 catch
-    const res = await fetch(`${BASE_URL}/persons/tmdb/${personId}`);
+    const res = await fetch(`${BASE_URL}/actors/${personId}`);
     if (!res.ok) return null;
     return await res.json();
   } catch (e) {
@@ -143,8 +143,8 @@ async function openCastModal(id, name, photo, role) {
   
   if (details && details.biography) {
     bioBox.textContent = details.biography;
-  } else if (details && details.place_of_birth) {
-    bioBox.textContent = `出生地：${details.place_of_birth}`;
+  } else if (details && details.country) {
+    bioBox.textContent = `出生地：${details.country}`;
   } else {
     bioBox.textContent = "目前暫無詳細個人簡介。";
   }

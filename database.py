@@ -80,7 +80,7 @@ def check_actor_detail(cur, actor_id):
     if actor_id is not None:
         cur.execute("SELECT birthdate FROM ACTOR WHERE actor_id=%s", (actor_id,))
         row = cur.fetchone()
-        if row:
+        if row and row[0] is not None:
             return True
     return False
 
