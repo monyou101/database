@@ -7,8 +7,10 @@ from database import connect_db, fetch_and_store_movie, get_movie_id_from_tmdb_i
 from tmdb_api import fetch_tmdb_data
 
 app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
-app.secret_key = 'your_secret_key'  # 生產環境使用強密鑰
-CORS(app)  # 允許前端跨域請求
+app.secret_key = os.getenv('SECRET_KEY', 'dev_secret_key_change_in_production')
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+CORS(app, supports_credentials=True)
 Compress(app)  # 自動壓縮 JSON 回應
 
 # 用戶認證 API（匹配 UI 登入/註冊功能）
@@ -21,7 +23,7 @@ def register():
     password = data.get('password')  # 實際應 hash，例如使用 bcrypt
     
     if not all([email, password]):
-        return jsonify({'error': 'Missing fields'}), 400
+        return jsonify({'success': False, 'message': 'Missing fields'}), 400
     
     conn = connect_db()
     cur = conn.cursor()
@@ -31,7 +33,7 @@ def register():
         return jsonify({'success': True, 'message': 'User registered successfully'}), 201
     except Exception as e:
         conn.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         cur.close()
         conn.close()
@@ -55,7 +57,7 @@ def login():
         session['user_id'] = user['user_id']
         session['username'] = user['username']
         return jsonify({'success': True, 'token': 'dummy_token', 'user_email': email})
-    return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+    return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
@@ -227,21 +229,29 @@ def get_actor_detail(actor_id):
     actor['movies_as_director'] = movies_as_director
     return jsonify(actor)
 
-@app.route('/reviews', methods=['POST'])
+@app.route('/reviews/add', methods=['POST'])
 def add_review():
     """新增評論（需登入，匹配 UI 評論功能）"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'success': False, 'message': 'Missing or invalid token'}), 401
+    
+    token = auth_header.split(' ')[1]  # 提取 token
+    if token != 'dummy_token':
+        return jsonify({'success': False, 'message': 'Invalid token'}), 401
+
     if 'user_id' not in session:
-        return jsonify({'error': 'Not logged in'}), 401
+        return jsonify({'success': False, 'message': 'Not logged in'}), 401
     
     data = request.json
     target_type = data.get('target_type')  # 'MOVIE', 'ACTOR' 等
-    target_id = data.get('target_id')
+    target_id = get_movie_id_from_tmdb_id(data.get('target_id'))
     rating = data.get('rating')
     title = data.get('title')
     body = data.get('body')
     
     if not all([target_type, target_id, rating]):
-        return jsonify({'error': 'Missing required fields'}), 400
+        return jsonify({'success': False, 'message': 'Missing required fields'}), 400
     
     conn = connect_db()
     cur = conn.cursor()
@@ -250,15 +260,54 @@ def add_review():
         cur.execute("""
             INSERT INTO REVIEW (user_id, target_type, target_id, rating, title, body)
             VALUES (%s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE rating=VALUES(rating), title=VALUES(title), body=VALUES(body)
         """, (session['user_id'], target_type, target_id, rating, title, body))
         conn.commit()
-        return jsonify({'message': 'Review added successfully'}), 201
+        return jsonify({'success': True, 'message': 'Review added successfully'}), 201
     except Exception as e:
         conn.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         cur.close()
         conn.close()
+
+@app.route('/reviews/tmdb/<int:tmdb_id>', methods=['GET'])
+def get_movie_review_by_tmdb_id(tmdb_id):
+    movie_id = get_movie_id_from_tmdb_id(tmdb_id)
+    if movie_id:
+        return get_movie_review(movie_id)
+    else:
+        try:
+            fetch_and_store_movie(tmdb_id)
+            movie_id = get_movie_id_from_tmdb_id(tmdb_id)
+            if movie_id:
+                return get_movie_review(movie_id)
+            else:
+                return jsonify({'reviews': [], 'message': 'Failed to retrieve movie after TMDB fetch'}), 500
+        except Exception as e:
+            return jsonify({'reviews': [], 'message': f'Failed to fetch movie from TMDB: {e}'}), 500
+
+@app.route('/reviews/<int:movie_id>', methods=['GET'])
+def get_movie_review(movie_id):
+    conn = connect_db()
+    cur = conn.cursor(dictionary=True)
+    
+    cur.execute("""
+        SELECT r.review_id, r.rating, r.title, r.body, r.created_at, u.username, u.email
+        FROM REVIEW r
+        JOIN USER u ON r.user_id = u.user_id
+        WHERE r.target_type = 'MOVIE' AND r.target_id = %s
+        ORDER BY r.created_at DESC
+    """, (movie_id,))
+    reviews = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    if not reviews:
+        return jsonify({'reviews': [], 'message': 'No reviews found'}), 200
+
+    return jsonify({'reviews': reviews}), 200
 
 @app.route('/popular', methods=['GET'])
 def get_popular_movies():

@@ -102,7 +102,9 @@ async function doLogin() {
   const password = document.getElementById("loginPwd").value;
   try {
     const res = await fetch(`${AUTH_URL}/auth/login`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: 'include',
       body: JSON.stringify({ email, password })
     });
     const data = await res.json();
@@ -147,8 +149,8 @@ async function loadReviews(movieId) {
     // 顯示評論 (新的在最上面，如果後端沒排序，前端用 reverse)
     box.innerHTML = data.reviews.map(r => `
       <div class="review-card">
-        <div class="review-user">${r.user_email || "匿名用戶"}</div>
-        <div class="review-text">${r.content}</div>
+        <div class="review-user">${r.email || "匿名用戶"}</div>
+        <div class="review-text">${r.body}</div>
         <div class="review-date">${r.created_at || ""}</div>
       </div>
     `).join("");
@@ -179,7 +181,14 @@ async function submitReview() {
         "Content-Type": "application/json", 
         "Authorization": `Bearer ${token}` 
       },
-      body: JSON.stringify({ movie_id: movieId, content })
+      credentials: 'include',
+      body: JSON.stringify({
+        target_type: 'MOVIE',
+        target_id: movieId,
+        rating: 5,
+        title: '',
+        body: content
+      })
     });
 
     // 檢查回應是否正常
