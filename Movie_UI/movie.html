@@ -6,20 +6,34 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="detail-body">
-  <header class="top-nav">
-    <div class="logo" onclick="window.location.href='index.html'" style="cursor:pointer;">
-      🎬 Movie Explorer
-    </div>
-    <div class="user-actions">
-  <button id="loginBtn" onclick="openAuthModal()">登入 / 註冊</button>
-  
-  <div id="userInfo" class="hidden" style="display: flex; gap: 10px; align-items: center;">
-    <span id="userEmailDisplay">user@example.com</span>
-    <button onclick="logout()">登出</button>
+<header class="top-nav">
+  <div class="logo" onclick="window.location.href='index.html'" style="cursor:pointer;">
+    🎬 Movie Explorer
   </div>
-</div>
-    <button class="back-btn" onclick="window.location.href='index.html'">← 回首頁</button>
-  </header>
+
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="搜尋電影..." />
+    <button onclick="performSearch()">搜尋</button>
+
+    <div style="width: 1px; height: 20px; background: #374151; margin: 0 12px;"></div>
+
+    <input 
+      type="text" 
+      id="cmdInput" 
+      placeholder="輸入指令..." 
+      class="cmd-input-simple"
+      autocomplete="off"
+    />
+  </div>
+
+  <div class="user-actions">
+    <button id="loginBtn" onclick="openAuthModal()">登入 / 註冊</button>
+    <div id="userInfo" class="hidden" style="display: flex; gap: 10px; align-items: center;">
+      <span id="userEmailDisplay" style="font-size: 14px; color: #fb923c;"></span>
+      <button onclick="logout()">登出</button>
+    </div>
+  </div>
+</header>
 
   <main class="detail-container">
     <!-- 上半部：左海報 + 右資訊 -->
@@ -68,7 +82,22 @@
   <footer class="footer">
     <p>資料來源：TMDB API（僅作為課程與學習用途）</p>
   </footer>
-
+<div id="personModal" class="modal hidden">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closePersonModal()">✕</button>
+    <div class="modal-body">
+      <div class="modal-left">
+        <img id="modalPersonPhoto" class="modal-photo" src="" alt="person">
+      </div>
+      <div class="modal-right">
+        <h2 id="modalPersonName"></h2>
+        <p id="modalPersonRole" style="color: #f97316; margin-bottom: 10px;"></p>
+        <p class="hint">目前僅顯示基本資訊，更多詳細資料需串接人物 API。</p>
+      </div>
+    </div>
+  </div>
+</div>
+  <script src="auth.js"></script>
   <script src="movie.js"></script>
 </body>
 <div id="authModal" class="modal hidden">

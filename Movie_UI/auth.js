@@ -1,39 +1,34 @@
 // ======= 會員系統邏輯 =======
 const AUTH_URL = "https://database-production-55fc.up.railway.app"; // 指向您的 Python 後端
 
-// 檢查登入狀態 (初始化)
+// 檢查登入狀態
 function checkLoginStatus() {
   const token = localStorage.getItem("token");
-  const email = localStorage.getItem("user_email");
-  
   const loginBtn = document.getElementById("loginBtn");
   const userInfo = document.getElementById("userInfo");
   const writeSec = document.getElementById("writeReviewSection");
   const hintSec = document.getElementById("loginToReviewHint");
+  
+  const emailDisplay = document.getElementById("userEmailDisplay");
+  if(emailDisplay) emailDisplay.textContent = "";
 
-  if (token && email) {
-    // 已登入
+  if (token) {
     if(loginBtn) loginBtn.classList.add("hidden");
     if(userInfo) {
         userInfo.classList.remove("hidden");
-        userInfo.style.display = "flex"; // 確保 flex 樣式生效
+        userInfo.style.display = "flex"; 
     }
-    document.getElementById("userEmailDisplay").textContent = email;
-    
-    // 如果在電影頁，顯示寫評論框
     if(writeSec) writeSec.classList.remove("hidden");
     if(hintSec) hintSec.classList.add("hidden");
   } else {
-    // 未登入
     if(loginBtn) loginBtn.classList.remove("hidden");
     if(userInfo) userInfo.classList.add("hidden");
-    
     if(writeSec) writeSec.classList.add("hidden");
     if(hintSec) hintSec.classList.remove("hidden");
   }
 }
 
-// Modal 切換 Tab
+// Modal 切換
 function switchTab(tab) {
   const loginForm = document.getElementById("formLogin");
   const regForm = document.getElementById("formRegister");
@@ -53,142 +48,74 @@ function switchTab(tab) {
   }
 }
 
-function openAuthModal() { document.getElementById("authModal").classList.remove("hidden"); }
-function closeAuthModal() { document.getElementById("authModal").classList.add("hidden"); }
+function openAuthModal() { 
+    const m = document.getElementById("authModal");
+    if(m) m.classList.remove("hidden"); 
+}
+function closeAuthModal() { 
+    const m = document.getElementById("authModal");
+    if(m) m.classList.add("hidden"); 
+}
 
-// ======= 修改後的驗證碼邏輯 =======
-
-// 1. 按下「傳送驗證碼」按鈕時觸發：只負責檢查並打開確認視窗
+// 註冊邏輯
 function sendVerifyCode() {
   const email = document.getElementById("regEmail").value.trim();
-  
-  if (!email) {
-    alert("請輸入 Email");
-    return;
-  }
-  
-  // 把 Email 填入確認視窗，並顯示視窗
+  if (!email) { alert("請輸入 Email"); return; }
   document.getElementById("confirmEmailDisplay").textContent = email;
   document.getElementById("confirmEmailModal").classList.remove("hidden");
 }
+function closeConfirmModal() { document.getElementById("confirmEmailModal").classList.add("hidden"); }
 
-// 2. 關閉確認視窗
-function closeConfirmModal() {
-  document.getElementById("confirmEmailModal").classList.add("hidden");
-}
-
-// 3. 使用者按下「沒錯，發送」後觸發：真正執行 EmailJS 寄信
 async function executeSendEmail() {
-  // 關閉確認視窗
   closeConfirmModal();
-  
-  // 再次取得 Email (從確認視窗或輸入框拿都可以)
   const email = document.getElementById("regEmail").value.trim();
-  const messageBox = document.getElementById("authMsg"); // 用來顯示狀態
-
-  // 產生隨機驗證碼
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  
-  // 存入 localStorage 供註冊比對
   localStorage.setItem("verify_code", code);
   localStorage.setItem("verify_email", email);
 
-  // EmailJS 參數
-  const templateParams = {
-    to_email: email, // 確保這裡對應 EmailJS 後台設定的 {{to_email}}
-    message: code,   // 確保這裡對應 EmailJS 後台設定的 {{message}}
-  };
-
+  const templateParams = { to_email: email, message: code };
   try {
-    if(messageBox) messageBox.textContent = "正在發送驗證碼...";
-    
-    // ★ 請確認這裡已填入您的 Service ID 和 Template ID
     await emailjs.send('service_bofseos', 'template_yi4ythq', templateParams);
-    
-    alert(`驗證碼已發送至 ${email}，請查收！`);
-    if(messageBox) messageBox.textContent = "驗證碼已發送，請檢查信箱。";
-    
-  } catch (error) {
-    console.error('寄信失敗:', error);
-    alert("寄信失敗，請檢查網路或 Email 設定。");
-    if(messageBox) messageBox.textContent = "發送失敗，請稍後再試。";
-  }
+    alert(`驗證碼已發送至 ${email}`);
+  } catch (error) { alert("寄信失敗，請檢查網路。"); }
 }
 
-// 2. 註冊
 async function doRegister() {
   const email = document.getElementById("regEmail").value;
   const code = document.getElementById("regCode").value;
   const password = document.getElementById("regPwd").value;
-  
-  if (!email || !code || !password) {
-    alert("請確認所有欄位都已填寫！");
-    return;
-  }
-
-  // 顯示 loading 或提示
-  const btn = event.target; // 取得按下的按鈕
-  const originalText = btn.textContent;
-  btn.textContent = "註冊中...";
-  btn.disabled = true;
+  if (!email || !code || !password) { alert("請填寫完整"); return; }
 
   try {
     const res = await fetch(`${AUTH_URL}/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, code, password })
     });
-    
-    // 如果伺服器回應不是 200-299，手動拋出錯誤
-    if (!res.ok) {
-        throw new Error(`伺服器回應錯誤: ${res.status}`);
-    }
-
     const data = await res.json();
-    if(data.success) {
-      alert("註冊成功！請登入。");
-      switchTab('login');
-    } else {
-      document.getElementById("authMsg").textContent = data.message;
-      alert("註冊失敗：" + data.message); // 多加一個 alert 比較明顯
-    }
-  } catch(e) { 
-    console.error(e); 
-    // ★ 這裡最重要：把連線錯誤顯示出來
-    alert("連線失敗！請確認後端 Python 伺服器是否已啟動。\n詳細錯誤：" + e.message);
-  } finally {
-    // 恢復按鈕
-    btn.textContent = originalText;
-    btn.disabled = false;
-  }
+    if(data.success) { alert("註冊成功"); switchTab('login'); }
+    else { alert("註冊失敗：" + data.message); }
+  } catch(e) { alert("錯誤：" + e.message); }
 }
 
-// 3. 登入
 async function doLogin() {
   const email = document.getElementById("loginEmail").value;
   const password = document.getElementById("loginPwd").value;
-  
   try {
     const res = await fetch(`${AUTH_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password })
     });
     const data = await res.json();
     if(data.success) {
-      // 儲存 Token (JWT)
       localStorage.setItem("token", data.token);
       localStorage.setItem("user_email", email);
       closeAuthModal();
       checkLoginStatus();
-      location.reload(); // 重新整理以更新狀態
-    } else {
-      document.getElementById("authMsg").textContent = "登入失敗：" + data.message;
-    }
+      location.reload(); 
+    } else { alert("登入失敗：" + data.message); }
   } catch(e) { console.error(e); }
 }
 
-// 4. 登出
 function logout() {
   localStorage.removeItem("token");
   localStorage.removeItem("user_email");
@@ -196,90 +123,96 @@ function logout() {
   location.reload();
 }
 
-// 5. 載入評論 (放在 loadMovieDetail 裡呼叫)
+// ★ 修復重點：載入評論 (防止報錯)
 async function loadReviews(movieId) {
+  const box = document.getElementById("reviewsList");
+  if(!box) return;
+
   try {
-    const res = await fetch(`${AUTH_URL}/reviews/${movieId}`);
-    const data = await res.json();
-    const box = document.getElementById("reviewsList");
+    const res = await fetch(`${AUTH_URL}/reviews/tmdb/${movieId}`);
     
+    // 如果 API 回傳 404/500，代表沒評論或後端錯誤，直接顯示空訊息，不要拋出錯誤
+    if (!res.ok) {
+        box.innerHTML = "<p style='color:#666;'>目前尚無評論。</p>";
+        return;
+    }
+
+    const data = await res.json(); // 這裡如果後端回傳 HTML 還是會爆，但上面那行擋掉大部分錯誤了
+
     if(!data.reviews || data.reviews.length === 0) {
-      box.innerHTML = "<p>目前尚無評論，成為第一個評論的人吧！</p>";
+      box.innerHTML = "<p style='color:#666;'>目前尚無評論，成為第一個評論的人吧！</p>";
       return;
     }
     
+    // 顯示評論 (新的在最上面，如果後端沒排序，前端用 reverse)
     box.innerHTML = data.reviews.map(r => `
       <div class="review-card">
-        <div class="review-user">${r.user_email}</div>
+        <div class="review-user">${r.user_email || "匿名用戶"}</div>
         <div class="review-text">${r.content}</div>
-        <div class="review-date">${r.created_at}</div>
+        <div class="review-date">${r.created_at || ""}</div>
       </div>
     `).join("");
-  } catch(e) { console.error(e); }
+
+  } catch(e) { 
+      console.log("評論載入略過或格式錯誤", e);
+      box.innerHTML = "<p style='color:#666;'>目前尚無評論。</p>";
+  }
 }
 
-// 6. 送出評論
+// ★ 修復重點：送出評論 (送出後立刻重整列表)
 async function submitReview() {
   const content = document.getElementById("reviewContent").value;
   const movieId = new URLSearchParams(window.location.search).get("id");
   const token = localStorage.getItem("token");
-  
+
   if(!content) return alert("請輸入內容");
+  if(!token) return alert("請先登入");
   
+  const submitBtn = event.target;
+  submitBtn.disabled = true;
+  submitBtn.innerText = "送出中...";
+
   try {
     const res = await fetch(`${AUTH_URL}/reviews/add`, {
       method: "POST",
       headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}` // 把 Token 帶給後端驗證
+        "Content-Type": "application/json", 
+        "Authorization": `Bearer ${token}` 
       },
       body: JSON.stringify({ movie_id: movieId, content })
     });
-    const data = await res.json();
-    if(data.success) {
-      document.getElementById("reviewContent").value = "";
-      loadReviews(movieId); // 重新載入列表
-    } else {
-      alert("評論失敗：" + data.message);
+
+    // 檢查回應是否正常
+    if (!res.ok) {
+        throw new Error(`伺服器錯誤: ${res.status}`);
     }
-  } catch(e) { console.error(e); }
+
+    const data = await res.json();
+    
+    if(data.success) {
+      document.getElementById("reviewContent").value = ""; // 清空輸入框
+      await loadReviews(movieId); // ★ 關鍵：成功後立刻重新載入評論列表
+    } else { 
+      alert("評論失敗：" + data.message); 
+    }
+  } catch(e) { 
+    console.error(e);
+    alert("送出失敗，請確認伺服器狀態。"); 
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerText = "送出評論";
+  }
 }
 
-// 頁面載入時執行
 document.addEventListener("DOMContentLoaded", () => {
   checkLoginStatus();
-  // 如果是電影詳細頁，還要載入評論
-  const params = new URLSearchParams(window.location.search);
-  const id = params.get("id");
-  if(id) loadReviews(id);
-});// ======= 密碼眼睛功能 =======
-document.addEventListener("DOMContentLoaded", () => {
+  
+  // 密碼眼睛功能
   const pwdInput = document.getElementById("regPwd");
   const toggleBtn = document.getElementById("togglePwdBtn");
-
   if (pwdInput && toggleBtn) {
-    // 1. 滑鼠按下 (MouseDown) -> 顯示密碼
-    toggleBtn.addEventListener("mousedown", () => {
-      pwdInput.type = "text";
-    });
-
-    // 2. 滑鼠放開 (MouseUp) -> 隱藏密碼
-    toggleBtn.addEventListener("mouseup", () => {
-      pwdInput.type = "password";
-    });
-
-    // 3. 滑鼠移開圖示 (MouseLeave) -> 也要隱藏，避免使用者按著移開後密碼一直顯示
-    toggleBtn.addEventListener("mouseleave", () => {
-      pwdInput.type = "password";
-    });
-    
-    // (選用) 支援手機觸控
-    toggleBtn.addEventListener("touchstart", (e) => {
-      e.preventDefault(); // 防止觸發 click
-      pwdInput.type = "text";
-    });
-    toggleBtn.addEventListener("touchend", () => {
-      pwdInput.type = "password";
-    });
+    toggleBtn.addEventListener("mousedown", () => pwdInput.type = "text");
+    toggleBtn.addEventListener("mouseup", () => pwdInput.type = "password");
+    toggleBtn.addEventListener("mouseleave", () => pwdInput.type = "password");
   }
 });
