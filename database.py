@@ -35,7 +35,7 @@ def check_movie(cur, tmdb_id):
 
 def upsert_movie(cur, tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url=None):
     cur.execute("""
-        INSERT INTO `MOVIE` (tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url)
+        INSERT INTO MOVIE (tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE
           title=VALUES(title), release_year=VALUES(release_year), genre=VALUES(genre), runtime=VALUES(runtime), overview=VALUES(overview), rating=VALUES(rating), poster_url=VALUES(poster_url)
@@ -86,7 +86,7 @@ def check_actor_detail(cur, actor_id):
 
 def upsert_actor(cur, tmdb_id, name, profile_url=None):
     cur.execute("""
-        INSERT INTO `ACTOR` (tmdb_id, name, profile_url)
+        INSERT INTO ACTOR (tmdb_id, name, profile_url)
         VALUES (%s,%s,%s)
         ON DUPLICATE KEY UPDATE name=VALUES(name), profile_url=VALUES(profile_url)
     """, (tmdb_id, name, profile_url))
@@ -97,9 +97,29 @@ def upsert_actor(cur, tmdb_id, name, profile_url=None):
     print(f"Stored actor {name} (actor_id={row[0]})")
     return row[0]
 
+def get_tmdb_id_from_actor_id(actor_id):
+    """從 actor_id 獲取 tmdb_id"""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT tmdb_id FROM ACTOR WHERE actor_id = %s", (actor_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row[0] if row else None
+
+def get_actor_id_from_tmdb_id(tmdb_id):
+    """從 tmdb_id 獲取 actor_id"""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id = %s", (tmdb_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row[0] if row else None
+
 def upsert_actor_detail(cur, tmdb_id, name, profile_url=None, birthdate=None, country=None):
     cur.execute("""
-        INSERT INTO `ACTOR` (tmdb_id, name, profile_url, birthdate, country)
+        INSERT INTO ACTOR (tmdb_id, name, profile_url, birthdate, country)
         VALUES (%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE name=VALUES(name), profile_url=VALUES(profile_url), birthdate=VALUES(birthdate), country=VALUES(country)
     """, (tmdb_id, name, profile_url, birthdate, country))
@@ -113,13 +133,13 @@ def upsert_actor_detail(cur, tmdb_id, name, profile_url=None, birthdate=None, co
 def ensure_movie_cast(cur, movie_id, actor_id, character_name, billing_order):
     # UNIQUE (movie_id, actor_id) 已存在時 INSERT IGNORE 可以跳過
     cur.execute("""
-        INSERT IGNORE INTO `MOVIE_CAST` (movie_id, actor_id, character_name, billing_order)
+        INSERT IGNORE INTO MOVIE_CAST (movie_id, actor_id, character_name, billing_order)
         VALUES (%s,%s,%s,%s)
     """, (movie_id, actor_id, character_name, billing_order))
 
 def ensure_director(cur, movie_id, actor_id):
     cur.execute("""
-        INSERT IGNORE INTO `DIRECTOR` (movie_id, actor_id)
+        INSERT IGNORE INTO DIRECTOR (movie_id, actor_id)
         VALUES (%s,%s)
     """, (movie_id, actor_id))
 

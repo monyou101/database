@@ -3,7 +3,7 @@ from flask_cors import CORS
 from flask_compress import Compress  # 新增壓縮
 import os
 import concurrent.futures  # 新增並發
-from database import connect_db, fetch_and_store_movie, get_movie_id_from_tmdb_id
+from database import connect_db, fetch_and_store_movie, get_movie_id_from_tmdb_id, fetch_and_store_actor, get_actor_id_from_tmdb_id
 from tmdb_api import fetch_tmdb_data
 
 app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
@@ -63,7 +63,6 @@ def logout():
     session.clear()
     return jsonify({'message': 'Logged out'})
 
-# 調整現有 API 以匹配 UI
 @app.route('/movies', methods=['GET'])
 def get_movies():
     """獲取電影清單（支援搜尋、分頁，匹配主頁清單）"""
@@ -89,19 +88,15 @@ def get_movies():
     conn.close()
     return jsonify(movies)
 
-# 新增端點：使用 tmdb_id 查詢電影詳細（若無，自動下載）
 @app.route('/movies/tmdb/<int:tmdb_id>', methods=['GET'])
 def get_movie_by_tmdb_id(tmdb_id):
     """使用 tmdb_id 獲取電影詳細（若資料庫無，自動從 TMDB 下載）"""
     movie_id = get_movie_id_from_tmdb_id(tmdb_id)
     if movie_id:
-        # 資料庫有，直接呼叫現有 get_movie_detail
         return get_movie_detail(movie_id)
     else:
-        # 資料庫無，自動下載
         try:
             fetch_and_store_movie(tmdb_id)
-            # 下載後重新獲取 movie_id
             movie_id = get_movie_id_from_tmdb_id(tmdb_id)
             if movie_id:
                 return get_movie_detail(movie_id)
@@ -183,6 +178,22 @@ def get_actors():
     cur.close()
     conn.close()
     return jsonify(actors)
+
+@app.route('/actors/tmdb/<int:tmdb_id>', methods=['GET'])
+def get_actor_by_tmdb_id(tmdb_id):
+    movie_id = get_actor_id_from_tmdb_id(tmdb_id)
+    if movie_id:
+        return get_actor_detail(movie_id)
+    else:
+        try:
+            fetch_and_store_actor(tmdb_id)
+            movie_id = get_actor_id_from_tmdb_id(tmdb_id)
+            if movie_id:
+                return get_actor_detail(movie_id)
+            else:
+                return jsonify({'error': 'Failed to retrieve movie after TMDB fetch'}), 500
+        except Exception as e:
+            return jsonify({'error': f'Failed to fetch movie from TMDB: {e}'}), 500
 
 @app.route('/actors/<int:actor_id>', methods=['GET'])
 def get_actor_detail(actor_id):
