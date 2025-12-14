@@ -11,7 +11,51 @@ async function loadMovieDetail() {
 
   try {
     const url = `${BASE_URL}/movies/tmdb/${id}`;
-    const res = await fetch(url);
+    
+    // ★★★ 修正 1: 從 localStorage 取得 Token ★★★
+    const token = localStorage.getItem("token");
+    
+    // 準備 Header
+    const headers = {
+      "Content-Type": "application/json"
+    };
+    
+    // 如果有 Token，就放入 Header (這樣後端才知道您已登入)
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    // ★★★ 修正 2: 發送請求時帶上 headers ★★★
+    const res = await fetch(url, {
+      method: "GET",
+      headers: headers
+    });
+
+    // ★★★ 修正 3: 針對 401 (未登入) 做優雅的處理 ★★★
+    if (res.status === 401) {
+      // 顯示需要登入的提示，而不是報錯
+      const titleEl = document.getElementById("movieTitle");
+      if(titleEl) titleEl.textContent = "🔒 此內容需登入觀看";
+      
+      const errBox = document.getElementById("movieOverview");
+      if(errBox) {
+        errBox.innerHTML = `
+          <div style="padding: 20px; background: #1e293b; border-radius: 8px; text-align: center;">
+            <p style="color: #f97316; font-weight: bold; font-size: 18px; margin-bottom: 10px;">
+              您的登入已過期或尚未登入
+            </p>
+            <p style="color: #ccc; margin-bottom: 20px;">
+              為了提供完整的電影資訊，請先登入會員。
+            </p>
+            <button onclick="openAuthModal()" class="auth-submit" style="width: auto; padding: 8px 24px;">
+              立即登入
+            </button>
+          </div>
+        `;
+      }
+      return; 
+    }
+
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     
     const data = await res.json();
@@ -32,6 +76,10 @@ async function loadMovieDetail() {
 
   } catch (err) {
     console.error("載入電影失敗", err);
+    const errBox = document.getElementById("movieOverview");
+    if(errBox && !errBox.textContent) {
+        errBox.textContent = "載入失敗，請稍後再試。";
+    }
   }
 }
 
@@ -77,7 +125,6 @@ function renderCast(castList) {
       const character = c.character_name || "";
       const id = c.actor_id;
 
-      // 處理特殊字元
       const safeName = name.replace(/'/g, "\\'");
       const safePhoto = photo.replace(/'/g, "\\'");
       const safeChar = character.replace(/'/g, "\\'");
@@ -92,7 +139,6 @@ function renderCast(castList) {
   }).join("");
 }
 
-// 根據 ID 去後端抓取演員詳細資料
 async function fetchPersonDetail(personId) {
   if (!personId) return null;
   try {
@@ -105,44 +151,59 @@ async function fetchPersonDetail(personId) {
   }
 }
 
-// 開啟 Modal 並載入資料
 async function openCastModal(id, name, photo, role) {
   const modal = document.getElementById("personModal");
   if (!modal) return;
   
-  // 1. 先填入基本資料
-  const elName = document.getElementById("modalPersonName");
-  if(elName) elName.textContent = name;
-  
-  const elPhoto = document.getElementById("modalPersonPhoto");
-  if(elPhoto) elPhoto.src = photo;
+  document.getElementById("modalPersonName").textContent = name;
+  document.getElementById("modalPersonPhoto").src = photo;
   
   const elRole = document.getElementById("modalPersonRole");
   if(elRole) elRole.textContent = role ? `飾演：${role}` : "";
-
-  // 簡介區塊
-  const bioBox = document.createElement("p");
-  bioBox.id = "modalPersonBio";
-  bioBox.style.marginTop = "10px";
-  bioBox.style.color = "#ccc";
-  bioBox.textContent = "正在載入詳細資料...";
   
-  const oldBio = document.getElementById("modalPersonBio");
-  if(oldBio) oldBio.remove();
+  document.getElementById("modalPersonBirth").textContent = "";
+  document.getElementById("modalPersonPlace").textContent = "";
+  document.getElementById("modalPersonBio").textContent = "";
   
-  if(elRole) elRole.parentNode.appendChild(bioBox);
+  const actorContainer = document.getElementById("modalActorMovies");
+  const directorContainer = document.getElementById("modalDirectorMovies");
+  
+  actorContainer.innerHTML = "";
+  directorContainer.innerHTML = "";
+  
+  if(actorContainer.previousElementSibling) actorContainer.previousElementSibling.style.display = "none";
+  if(directorContainer.previousElementSibling) directorContainer.previousElementSibling.style.display = "none";
 
   modal.classList.remove("hidden");
 
-  // 2. 呼叫後端 API
   const details = await fetchPersonDetail(id);
   
   if (details) {
-    if (details.biography) bioBox.textContent = details.biography;
-    else if (details.country) bioBox.textContent = `出生地：${details.country}`;
-    else bioBox.textContent = "目前暫無詳細個人簡介。";
+    let infoHtml = "";
+    if (details.birthdate) {
+        const birthDate = new Date(details.birthdate);
+        const age = new Date().getFullYear() - birthDate.getFullYear();
+        const dateStr = details.birthdate.toString().split("T")[0]; 
+        infoHtml += `🎂 生日：${dateStr} (現年 ${age} 歲)<br>`;
+    }
+    if (details.country) {
+        infoHtml += `🌍 出生地：${details.country}<br>`;
+    }
+
+    document.getElementById("modalPersonBirth").innerHTML = infoHtml;
+
+    if (details.movies_as_actor && details.movies_as_actor.length > 0) {
+        if(actorContainer.previousElementSibling) actorContainer.previousElementSibling.style.display = "block";
+        actorContainer.innerHTML = details.movies_as_actor.map(m => createMiniMovieCard(m)).join("");
+    } 
+
+    if (details.movies_as_director && details.movies_as_director.length > 0) {
+        if(directorContainer.previousElementSibling) directorContainer.previousElementSibling.style.display = "block";
+        directorContainer.innerHTML = details.movies_as_director.map(m => createMiniMovieCard(m)).join("");
+    }
+
   } else {
-    bioBox.textContent = "無法載入詳細資料。";
+    document.getElementById("modalPersonBirth").textContent = "無法載入詳細資料。";
   }
 }
 
@@ -151,21 +212,18 @@ function closePersonModal() {
   if(modal) modal.classList.add("hidden");
 }
 
-// ======= 搜尋功能 (跳轉) =======
 function performSearch() {
   const input = document.getElementById("searchInput");
   if (!input) return;
   const query = input.value.trim();
   if (query) {
     alert(`請至首頁使用搜尋功能，您輸入了：${query}`);
-    // window.location.href = `index.html`; // 視需求決定是否跳轉
   }
 }
 document.getElementById("searchInput")?.addEventListener("keypress", (e) => {
   if (e.key === "Enter") performSearch();
 });
 
-// ======= CMD 指令功能 (正式 fetch 版) =======
 const cmdInput = document.getElementById("cmdInput");
 if (cmdInput) {
   cmdInput.addEventListener("keypress", async (e) => {
@@ -175,7 +233,6 @@ if (cmdInput) {
       cmdInput.value = "";
 
       try {
-        // ★ 發送 POST 請求
         const res = await fetch(`${BASE_URL}/api/cmd`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -183,8 +240,6 @@ if (cmdInput) {
         });
         
         const data = await res.json();
-        
-        // ★ 顯示結果
         alert(`💻 指令執行結果：\n\n${JSON.stringify(data, null, 2)}`);
 
       } catch (err) {
@@ -194,5 +249,21 @@ if (cmdInput) {
   });
 }
 
-// 啟動
+function createMiniMovieCard(m) {
+    const targetId = m.movie_id || m.id;
+    const poster = m.poster_url ? m.poster_url : "No_image_available.png";
+    const title = m.title || "未知片名";
+    const year = m.release_year || (m.release_date ? m.release_date.slice(0,4) : "");
+
+    return `
+      <div style="flex: 0 0 90px; margin-right: 12px; cursor: pointer;" onclick="window.location.href='movie.html?id=${targetId}'">
+        <img src="${poster}" style="width: 90px; height: 135px; object-fit: cover; border-radius: 4px; border: 1px solid #333;">
+        <div style="font-size: 12px; margin-top: 4px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 90px;">
+          ${title}
+        </div>
+        <div style="font-size: 10px; color: #999;">${year}</div>
+      </div>
+    `;
+}
+
 loadMovieDetail();

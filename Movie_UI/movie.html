@@ -36,7 +36,6 @@
 </header>
 
   <main class="detail-container">
-    <!-- 上半部：左海報 + 右資訊 -->
     <section class="movie-detail-main">
       <div class="movie-detail-poster">
         <img id="moviePoster" src="" alt="poster">
@@ -50,7 +49,9 @@
         <div class="detail-sub-info">
           <p id="movieDirectors"></p>
           <p id="movieRuntime"></p>
-          <p id="movieRating"></p>
+          <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 4px;">
+            <p id="movieRating" style="margin:0;"></p> <p id="siteRating" style="margin:0; color: #f97316; font-weight: bold;">本站評分：計算中...</p>
+          </div>
         </div>
 
         <h2>主要演員 Top Cast</h2>
@@ -58,21 +59,32 @@
       </div>
     </section>
 
-    <!-- 下半部：相似電影 -->
-    <!-- <section class="block">
-      <h2>你可能也會喜歡 Similar Movies</h2>
-      <div id="similarMovies" class="scroll-row"></div>
-    </section> -->
-  </main>
+    </main>
 <section class="block">
   <h2>📝 觀眾評論 Reviews</h2>
   
   <div id="writeReviewSection" class="sub-block hidden">
-    <textarea id="reviewContent" placeholder="寫下你的看法..." style="width: 100%; height: 80px; background: #111; color: #fff; border: 1px solid #333; padding: 8px; border-radius: 4px;"></textarea>
-    <div style="margin-top: 8px; display: flex; justify-content: flex-end;">
-      <button onclick="submitReview()" class="auth-submit" style="width: auto; padding: 6px 16px;">送出評論</button>
-    </div>
+  <div style="margin-bottom: 10px; display: flex; align-items: center;">
+      <label for="reviewScore" style="color: #ccc; margin-right: 10px; font-size: 14px;">評分 (1-10)：</label>
+      <select id="reviewScore" style="background: #222; color: #facc15; border: 1px solid #444; padding: 6px 10px; border-radius: 4px; outline: none; font-weight: bold;">
+          <option value="10">10</option>
+          <option value="9">9</option>
+          <option value="8">8</option>
+          <option value="7">7</option>
+          <option value="6">6</option>
+          <option value="5" selected>5</option>
+          <option value="4">4</option>
+          <option value="3">3</option>
+          <option value="2">2</option>
+          <option value="1">1</option>
+      </select>
   </div>
+
+  <textarea id="reviewContent" placeholder="寫下你的看法..." style="width: 100%; height: 80px; background: #111; color: #fff; border: 1px solid #333; padding: 8px; border-radius: 4px;"></textarea>
+  <div style="margin-top: 8px; display: flex; justify-content: flex-end;">
+    <button onclick="submitReview(event)" class="auth-submit" style="width: auto; padding: 6px 16px;">送出評論</button>
+  </div>
+</div>
   
   <p id="loginToReviewHint" class="hint">請先登入以發表評論。</p>
 
@@ -89,17 +101,28 @@
       <div class="modal-left">
         <img id="modalPersonPhoto" class="modal-photo" src="" alt="person">
       </div>
+      
       <div class="modal-right">
         <h2 id="modalPersonName"></h2>
+        
+        <p id="modalPersonBirth" style="font-size: 13px; color: #9ca3af; margin-bottom: 2px;"></p>
+        <p id="modalPersonPlace" style="font-size: 13px; color: #9ca3af; margin-bottom: 8px;"></p>
+
         <p id="modalPersonRole" style="color: #f97316; margin-bottom: 10px;"></p>
-        <p class="hint">目前僅顯示基本資訊，更多詳細資料需串接人物 API。</p>
+        
+        <div id="modalPersonBio" class="bio" style="max-height: 120px; overflow-y: auto; font-size: 14px; color: #ddd; margin-bottom: 15px;"></div>
+
+        <h3 style="font-size: 16px; margin-bottom: 8px; border-top: 1px solid #333; padding-top: 10px;">🎬 出演作品 (Actor)</h3>
+        <div id="modalActorMovies" class="scroll-row" style="padding-bottom: 10px; min-height: 100px;"></div>
+
+        <h3 style="font-size: 16px; margin-bottom: 8px; border-top: 1px solid #333; padding-top: 10px;">🎥 執導作品 (Director)</h3>
+        <div id="modalDirectorMovies" class="scroll-row" style="padding-bottom: 10px; min-height: 50px;"></div>
       </div>
     </div>
   </div>
 </div>
   <script src="auth.js"></script>
   <script src="movie.js"></script>
-</body>
 <div id="authModal" class="modal hidden">
   <div class="modal-content" style="max-width: 400px;">
     <button class="modal-close" onclick="closeAuthModal()">✕</button>
@@ -128,4 +151,5 @@
     <p id="authMsg" style="color: red; margin-top: 10px; font-size: 14px; text-align: center;"></p>
   </div>
 </div>
+</body>
 </html>

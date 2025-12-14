@@ -9,13 +9,16 @@ function checkLoginStatus() {
   const hintSec = document.getElementById("loginToReviewHint");
   
   const emailDisplay = document.getElementById("userEmailDisplay");
-  if(emailDisplay) emailDisplay.textContent = "";
+  if(emailDisplay) emailDisplay.textContent = ""; // 先清空
 
   if (token) {
     if(loginBtn) loginBtn.classList.add("hidden");
     if(userInfo) {
         userInfo.classList.remove("hidden");
         userInfo.style.display = "flex"; 
+        // 顯示使用者 Email
+        const savedEmail = localStorage.getItem("user_email");
+        if(savedEmail && emailDisplay) emailDisplay.textContent = savedEmail;
     }
     if(writeSec) writeSec.classList.remove("hidden");
     if(hintSec) hintSec.classList.add("hidden");
@@ -103,7 +106,7 @@ async function doLogin() {
     const res = await fetch(`${AUTH_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: 'include',
+      // credentials: 'include', // ★ 移除這行，避免某些環境下的權限衝突
       body: JSON.stringify({ email, password })
     });
     const data = await res.json();
@@ -124,98 +127,165 @@ function logout() {
   location.reload();
 }
 
-// ★ 修復重點：載入評論 (防止報錯)
 async function loadReviews(movieId) {
   const box = document.getElementById("reviewsList");
+  const siteRatingBox = document.getElementById("siteRating");
+  
   if(!box) return;
 
   try {
     const res = await fetch(`${AUTH_URL}/reviews/tmdb/${movieId}`);
     
-    // 如果 API 回傳 404/500，代表沒評論或後端錯誤，直接顯示空訊息，不要拋出錯誤
     if (!res.ok) {
         box.innerHTML = "<p style='color:#666;'>目前尚無評論。</p>";
+        if(siteRatingBox) siteRatingBox.textContent = "本站評分：暫無";
         return;
     }
 
-    const data = await res.json(); // 這裡如果後端回傳 HTML 還是會爆，但上面那行擋掉大部分錯誤了
+    const data = await res.json(); 
 
     if(!data.reviews || data.reviews.length === 0) {
       box.innerHTML = "<p style='color:#666;'>目前尚無評論，成為第一個評論的人吧！</p>";
+      if(siteRatingBox) siteRatingBox.textContent = "本站評分：暫無";
       return;
     }
     
-    // 顯示評論 (新的在最上面，如果後端沒排序，前端用 reverse)
-    box.innerHTML = data.reviews.map(r => `
-      <div class="review-card">
-        <div class="review-user">${r.email || "匿名用戶"}</div>
-        <div class="review-text">${r.body}</div>
-        <div class="review-date">${r.created_at || ""}</div>
+    let totalScore = 0;
+    let validCount = 0;
+    
+    data.reviews.forEach(r => {
+        if (r.rating !== undefined && r.rating !== null) {
+            totalScore += parseInt(r.rating);
+            validCount++;
+        }
+    });
+    
+    if (siteRatingBox) {
+        if (validCount > 0) {
+            const avg = (totalScore / validCount).toFixed(1);
+            siteRatingBox.innerHTML = `本站評分：<span style="color:#facc15; font-size:1.2em;">★ ${avg}</span> <span style="font-size:0.8em; color:#999;">(${validCount} 人評分)</span>`;
+        } else {
+            siteRatingBox.textContent = "本站評分：暫無";
+        }
+    }
+
+    box.innerHTML = data.reviews.map(r => {
+      const scoreHtml = (r.rating !== undefined && r.rating !== null) 
+        ? `<span style="color: #facc15; font-weight:bold; margin-left: 10px; border: 1px solid #facc15; padding: 1px 6px; border-radius: 4px; font-size: 12px;">★ ${r.rating}</span>` 
+        : "";
+      
+      const dateStr = r.created_at ? r.created_at.slice(0, 10) : "";
+
+      return `
+      <div class="review-card" style="margin-bottom: 12px;">
+        <div style="display:flex; justify-content: space-between; align-items: center;">
+            <div class="review-user" style="display:flex; align-items:center;">
+                ${r.email || "匿名用戶"} 
+                ${scoreHtml}
+            </div>
+            <div class="review-date">${dateStr}</div>
+        </div>
+        <div class="review-text" style="margin-top: 6px; color: #ddd;">${r.body}</div>
       </div>
-    `).join("");
+    `}).join("");
 
   } catch(e) { 
-      console.log("評論載入略過或格式錯誤", e);
-      box.innerHTML = "<p style='color:#666;'>目前尚無評論。</p>";
+      console.log("評論載入錯誤", e);
+      box.innerHTML = "<p style='color:#666;'>讀取評論時發生錯誤。</p>";
   }
 }
 
-// ★ 修復重點：送出評論 (送出後立刻重整列表)
-async function submitReview() {
-  const content = document.getElementById("reviewContent").value;
+// ★★★ 修正後的送出評論 (解決 401 錯誤) ★★★
+async function submitReview(event) {
+  if (event) {
+    event.preventDefault();
+  }
+
+  const contentEl = document.getElementById("reviewContent");
+  const scoreEl = document.getElementById("reviewScore"); 
+
+  if (!contentEl) return;
+  
+  const content = contentEl.value;
+  if (!content || !content.trim()) {
+      alert("請輸入評論內容");
+      return;
+  }
+
+  let ratingVal = 5;
+  if (scoreEl) {
+      ratingVal = parseInt(scoreEl.value);
+  }
+
   const movieId = new URLSearchParams(window.location.search).get("id");
   const token = localStorage.getItem("token");
 
-  if(!content) return alert("請輸入內容");
-  if(!token) return alert("請先登入");
-  
-  const submitBtn = event.target;
-  submitBtn.disabled = true;
-  submitBtn.innerText = "送出中...";
+  if (!token) {
+      alert("請先登入才能評論！");
+      return;
+  }
+
+  // 鎖定按鈕
+  const submitBtn = event ? event.target : null;
+  if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerText = "送出中...";
+  }
 
   try {
+    const payload = {
+        target_type: 'MOVIE',
+        target_id: movieId,
+        rating: ratingVal, 
+        title: '',
+        body: content
+    };
+    
+    // ★ 修正：移除 credentials: 'include'，這常常是導致 401 的原因
+    // 因為我們已經在 Header 帶了 Token，後端不需要 Cookie
     const res = await fetch(`${AUTH_URL}/reviews/add`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json", 
         "Authorization": `Bearer ${token}` 
       },
-      credentials: 'include',
-      body: JSON.stringify({
-        target_type: 'MOVIE',
-        target_id: movieId,
-        rating: 5,
-        title: '',
-        body: content
-      })
+      body: JSON.stringify(payload)
     });
 
-    // 檢查回應是否正常
+    if (res.status === 401) {
+        alert("授權失敗：您的登入已過期，請重新登入。");
+        logout(); // 自動登出
+        return;
+    }
+
     if (!res.ok) {
-        throw new Error(`伺服器錯誤: ${res.status}`);
+        const errorText = await res.text();
+        throw new Error(`伺服器錯誤: ${errorText}`);
     }
 
     const data = await res.json();
     
     if(data.success) {
-      document.getElementById("reviewContent").value = ""; // 清空輸入框
-      await loadReviews(movieId); // ★ 關鍵：成功後立刻重新載入評論列表
+      document.getElementById("reviewContent").value = ""; 
+      await loadReviews(movieId); // 重新載入列表
     } else { 
       alert("評論失敗：" + data.message); 
     }
+
   } catch(e) { 
     console.error(e);
-    alert("送出失敗，請確認伺服器狀態。"); 
+    alert("送出失敗：" + e.message); 
   } finally {
-    submitBtn.disabled = false;
-    submitBtn.innerText = "送出評論";
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "送出評論";
+    }
   }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   checkLoginStatus();
   
-  // 密碼眼睛功能
   const pwdInput = document.getElementById("regPwd");
   const toggleBtn = document.getElementById("togglePwdBtn");
   if (pwdInput && toggleBtn) {
