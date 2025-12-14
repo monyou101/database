@@ -1,1 +1,1 @@
-web: python movie_backend.py
+web: gunicorn --bind 0.0.0.0:$PORT movie_backend:app

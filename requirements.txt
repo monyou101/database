@@ -4,3 +4,4 @@ flask_compress
 mysql-connector-python
 pyjwt
 requests
+gunicorn
