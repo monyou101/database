@@ -407,5 +407,47 @@ def trending_all():
         'upcoming': results[3]
     })
 
+@app.route('/api/cmd', methods=['POST'])
+def cli_cmd():
+    """執行 SQL 指令（僅限開發環境，生產環境應移除或限制）"""
+    # 安全警告：生產環境應移除此端點或加強權限驗證
+    # if not app.debug:
+    #     return jsonify({'error': 'Command execution disabled in production'}), 403
+    
+    data = request.json
+    command = data.get('command', '').strip()
+    
+    if not command:
+        return jsonify({'error': 'Empty command'}), 400
+    
+    # 只允許 SELECT 查詢（避免 DELETE/DROP 等危險操作）
+    if not command.upper().startswith('SELECT'):
+        return jsonify({'error': 'Only SELECT queries are allowed'}), 403
+    
+    conn = connect_db()
+    cur = conn.cursor(dictionary=True)
+    
+    try:
+        cur.execute(command)
+        results = cur.fetchall()
+        
+        # 回傳結果
+        return jsonify({
+            'success': True,
+            'command': command,
+            'rows': len(results),
+            'data': results
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'command': command,
+            'error': str(e)
+        }), 400
+    finally:
+        cur.close()
+        conn.close()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.getenv('PORT', 5000)))

@@ -1,4 +1,3 @@
-// ======= TMDB 基本設定 =======
 const IMG_BASE = "https://image.tmdb.org/t/p/w500";
 const BACKEND_URL = "https://database-production-55fc.up.railway.app";
 
@@ -7,7 +6,7 @@ function imgUrl(path) {
   return `${IMG_BASE}${path}`;
 }
 
-// ======= 搜尋電影&人物 =======
+// ======= 1. 搜尋功能 =======
 async function smartSearch() {
   const input = document.getElementById("searchInput").value.trim();
   const message = document.getElementById("searchMessage");
@@ -17,8 +16,6 @@ async function smartSearch() {
 
   if (!input) {
     message.textContent = "請輸入電影/人物名稱。";
-    movieSection.classList.add("hidden");
-    peopleSection.classList.add("hidden");
     return;
   }
 
@@ -62,7 +59,6 @@ async function smartSearch() {
   }
 }
 
-// 顯示電影（API 回傳）
 function showMovieListFromAPI(list, targetId) {
   const box = document.getElementById(targetId);
   const filteredList = list.filter(m => m.release_date);
@@ -83,7 +79,6 @@ function showMovieListFromAPI(list, targetId) {
     .join("");
 }
 
-// 顯示人物（API 回傳）
 function showPeopleListFromAPI(list, targetId) {
   const box = document.getElementById(targetId);
   const filteredList = list.filter(m => m.profile_path);
@@ -94,17 +89,15 @@ function showPeopleListFromAPI(list, targetId) {
         <div class="person-card" onclick="openPersonModal(${p.id})">
           <img src="${photo}" class="person-photo" alt="${p.name}">
           <div class="person-name">${p.name}</div>
-          <div class="person-name">${p.original_name}</div>
         </div>
       `;
     })
     .join("");
 }
 
-// ======= 排行榜：今日、本週、熱映中、即將上映 =======
+// ======= 2. 排行榜 =======
 async function loadTrending() {
   try {
-    // 並發獲取所有 trending 資料（通過後端新端點）
     const res = await fetch(`${BACKEND_URL}/api/trending/all`);
     const data = await res.json();
     
@@ -137,57 +130,84 @@ function showRankRow(results, targetId) {
     .join("");
 }
 
-// ======= 人物 Modal（假資料） =======
-function openPersonModal(personId) {
-  const data = personMap[personId];
-  if (!data) return;
+// ======= 3. 人物 Modal (正式串接後端 API) =======
+async function openPersonModal(personId) {
+  const modal = document.getElementById("personModal");
+  if (!modal) return;
 
-  document.getElementById("personName").textContent = data.name;
-  document.getElementById("personPhoto").src = data.photo;
-  document.getElementById("personBirth").textContent =
-    "生日：" + (data.birth || "未知");
-  document.getElementById("personPlace").textContent =
-    "出生地：" + (data.place || "未知");
-  document.getElementById("personBio").textContent =
-    data.bio || "尚無簡介。";
+  // 先清空舊資料
+  document.getElementById("personName").textContent = "載入中...";
+  document.getElementById("personPhoto").src = "No_image_available.png";
+  document.getElementById("personBirth").textContent = "";
+  document.getElementById("personPlace").textContent = "";
+  document.getElementById("personBio").textContent = "";
+  document.getElementById("personKnownFor").innerHTML = "";
+  document.getElementById("personMovies").innerHTML = "";
 
-  document.getElementById("personKnownFor").innerHTML = (data.known_for || [])
-    .map(
-      m => `
-    <div class="movie-card">
-      <img src="${m.poster}" class="movie-poster">
-      <div class="movie-title">${m.title}</div>
-      <div class="movie-meta">${m.year}</div>
-      <div class="movie-rating">⭐ ${m.rating}</div>
-    </div>
-  `
-    )
-    .join("");
+  modal.classList.remove("hidden");
 
-  document.getElementById("personMovies").innerHTML = (data.movies || [])
-    .map(
-      m => `
-    <div class="movie-card">
-      <img src="${m.poster}" class="movie-poster">
-      <div class="movie-title">${m.title}</div>
-      <div class="movie-meta">${m.year}</div>
-      <div class="movie-rating">⭐ ${m.rating}</div>
-    </div>
-  `
-    )
-    .join("");
+  try {
+    // ★ 呼叫後端取得演員詳細資料
+    const res = await fetch(`${BACKEND_URL}/actors/tmdb/${personId}`);
+    if (!res.ok) throw new Error("API Error");
+    const data = await res.json();
 
-  document.getElementById("personModal").classList.remove("hidden");
+    // 填入資料
+    document.getElementById("personName").textContent = data.name;
+    document.getElementById("personPhoto").src = data.profile_url || "No_image_available.png";
+    document.getElementById("personBirth").textContent = "生日：" + (data.birthdate || "未知");
+    document.getElementById("personPlace").textContent = "出生地：" + (data.country || "未知");
+    document.getElementById("personBio").textContent = data.biography || "尚無簡介。";
+
+    // 如果後端有回傳 known_for 或 movies (視後端實作而定)
+    // 這裡保留擴充空間，如果 data.known_for 存在則顯示
+    if (data.known_for && data.known_for.length > 0) {
+       // 渲染代表作品邏輯...
+    }
+
+  } catch (e) {
+    console.error("載入演員失敗", e);
+    document.getElementById("personName").textContent = "無法載入資料";
+  }
 }
 
 function closePersonModal() {
   document.getElementById("personModal").classList.add("hidden");
 }
 
-// ======= 跳轉到電影詳細頁 =======
 function goMovieDetail(id) {
   window.location.href = `movie.html?id=${id}`;
 }
 
-// ======= 初始化 =======
+// ======= 4. 指令輸入功能 (CMD) =======
+const cmdInput = document.getElementById("cmdInput");
+if (cmdInput) {
+  cmdInput.addEventListener("keypress", async (e) => {
+    if (e.key === "Enter") {
+      const command = cmdInput.value.trim();
+      if (!command) return;
+      
+      cmdInput.value = ""; // 清空
+
+      try {
+        // ★ 發送 POST 請求給後端 (假設路徑為 /api/cmd)
+        const res = await fetch(`${BACKEND_URL}/api/cmd`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command: command }) // 送出 { "command": "指令內容" }
+        });
+        
+        const data = await res.json();
+        
+        // ★ 顯示後端回傳的計算結果
+        alert(`💻 指令回傳結果：\n\n${JSON.stringify(data, null, 2)}`);
+
+      } catch (err) {
+        alert("指令發送失敗：" + err.message);
+      }
+    }
+  });
+}
+
+// 初始化
 loadTrending();

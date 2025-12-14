@@ -16,15 +16,23 @@
         placeholder="輸入電影/人物名稱（例如：Inception）"
       />
       <button onclick="smartSearch()">搜尋</button>
+
+      <div style="width: 1px; height: 20px; background: #374151; margin: 0 12px;"></div>
+      <input 
+        type="text" 
+        id="cmdInput" 
+        placeholder="輸入後端指令..." 
+        class="cmd-input-simple"
+        autocomplete="off"
+      />
     </div>
     <div class="user-actions">
-  <button id="loginBtn" onclick="openAuthModal()">登入 / 註冊</button>
-  
-  <div id="userInfo" class="hidden" style="display: flex; gap: 10px; align-items: center;">
-    <span id="userEmailDisplay">user@example.com</span>
-    <button onclick="logout()">登出</button>
-  </div>
-</div>
+      <button id="loginBtn" onclick="openAuthModal()">登入 / 註冊</button>
+      <div id="userInfo" class="hidden" style="display: flex; gap: 10px; align-items: center;">
+        <span id="userEmailDisplay">user@example.com</span>
+        <button onclick="logout()">登出</button>
+      </div>
+    </div>
   </header>
 
   <main class="container">
