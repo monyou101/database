@@ -3,15 +3,15 @@ from flask_cors import CORS
 from flask_compress import Compress  # 新增壓縮
 import os
 import concurrent.futures  # 新增並發
+import jwt
+import datetime
 from database import connect_db, fetch_and_store_movie, get_movie_id_from_tmdb_id, fetch_and_store_actor, get_actor_id_from_tmdb_id, get_tmdb_id_from_actor_id
 from tmdb_api import fetch_tmdb_data
 
 app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
-app.secret_key = os.getenv('SECRET_KEY', 'dev_secret_key_change_in_production')
-app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-CORS(app, supports_credentials=True)
+CORS(app)
 Compress(app)  # 自動壓縮 JSON 回應
+SECRET_KEY = os.getenv('SECRET_KEY', 'dev_secret_key')
 
 # 用戶認證 API（匹配 UI 登入/註冊功能）
 @app.route('/auth/register', methods=['POST'])
@@ -54,15 +54,22 @@ def login():
     conn.close()
     
     if user:
-        session['user_id'] = user['user_id']
-        session['username'] = user['username']
-        return jsonify({'success': True, 'token': 'dummy_token', 'user_email': email})
+        payload = {
+            'user_id': user['user_id'],
+            'email': email,
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(days=7)
+        }
+        token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+        
+        return jsonify({
+            'success': True,
+            'token': token,
+            'user_email': email})
     return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
     """用戶登出"""
-    session.clear()
     return jsonify({'message': 'Logged out'})
 
 @app.route('/movies', methods=['GET'])
@@ -236,18 +243,20 @@ def add_review():
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'success': False, 'message': 'Missing or invalid token'}), 401
     
-    token = auth_header.split(' ')[1]  # 提取 token
-    if token != 'dummy_token':
-        return jsonify({'success': False, 'message': 'Invalid token'}), 401
-
-    if 'user_id' not in session:
-        return jsonify({'success': False, 'message': 'Not logged in'}), 401
+    token = auth_header.split(' ')[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        user_id = payload['user_id']
+    except jwt.ExpiredSignatureError:
+        return jsonify({'success': False, 'error': 'Token expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'success': False, 'error': 'Invalid token'}), 401
     
     data = request.json
     target_type = data.get('target_type')  # 'MOVIE', 'ACTOR' 等
     target_id = get_movie_id_from_tmdb_id(data.get('target_id'))
-    rating = data.get('rating')
-    title = data.get('title')
+    rating = data.get('rating', 5)
+    title = data.get('title', '')
     body = data.get('body')
     
     if not all([target_type, target_id, rating]):
@@ -261,7 +270,7 @@ def add_review():
             INSERT INTO REVIEW (user_id, target_type, target_id, rating, title, body)
             VALUES (%s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE rating=VALUES(rating), title=VALUES(title), body=VALUES(body)
-        """, (session['user_id'], target_type, target_id, rating, title, body))
+        """, (user_id, target_type, target_id, rating, title, body))
         conn.commit()
         return jsonify({'success': True, 'message': 'Review added successfully'}), 201
     except Exception as e:
