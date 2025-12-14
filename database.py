@@ -204,7 +204,7 @@ def fetch_and_store_movie(tmdb_movie_id):
         conn.close()
 
 def fetch_and_store_actor(tmdb_actor_id):
-    from tmdb_api import fetch_tmdb_data, fetch_person_details
+    from tmdb_api import fetch_tmdb_data
     conn = connect_db()
     cur = conn.cursor()
 
@@ -220,7 +220,8 @@ def fetch_and_store_actor(tmdb_actor_id):
         name = data.get("name")
         profile_path = data.get("profile_path")
         profile_url = f"{TMDB_IMG_BASE_URL}{profile_path}" if profile_path else None
-        birthdate, country = fetch_person_details(tmdb_actor_id)
+        birthdate = data.get("birthday")  # 格式如 "1974-10-28"
+        country = data.get("place_of_birth")  # 字串，如 "Los Angeles, California, USA"
         upsert_actor_detail(cur, tmdb_actor_id, name, profile_url, birthdate, country)
         print("Note: Only basic actor information has been stored. No movie associations have been made." \
         " To associate this actor with movies, please use the appropriate functionality separately.")

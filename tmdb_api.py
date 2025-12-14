@@ -22,17 +22,6 @@ def fetch_tmdb_data(url, params=None):
         ) from e
     return response.json()
 
-def fetch_person_details(person_tmdb_id):
-    # 從 TMDB 獲取 person 的 birthday 與 place_of_birth
-    try:
-        data = fetch_tmdb_data(f"/person/{person_tmdb_id}")
-        birthdate = data.get("birthday")  # 格式如 "1974-10-28"
-        country = data.get("place_of_birth")  # 字串，如 "Los Angeles, California, USA"
-        return birthdate, country
-    except Exception as e:
-        print(f"Warning: Failed to fetch details for person {person_tmdb_id}: {e}")
-        return None, None
-
 def fetch_popular_movies(pages=1):
     """回傳 popular 清單中的 movie ids"""
     try:
