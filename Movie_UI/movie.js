@@ -10,7 +10,7 @@ async function loadMovieDetail() {
   if (!id) return;
 
   try {
-    const url = `${BASE_URL}/movies/tmdb/${id}`;
+    const url = `${BASE_URL}/movies/${id}`;
     
     // ★★★ 修正 1: 從 localStorage 取得 Token ★★★
     const token = localStorage.getItem("token");
@@ -250,7 +250,7 @@ if (cmdInput) {
 }
 
 function createMiniMovieCard(m) {
-    const targetId = m.movie_id || m.id;
+    const targetId = m.movie_id;
     const poster = m.poster_url ? m.poster_url : "No_image_available.png";
     const title = m.title || "未知片名";
     const year = m.release_year || (m.release_date ? m.release_date.slice(0,4) : "");

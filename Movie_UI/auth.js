@@ -134,7 +134,7 @@ async function loadReviews(movieId) {
   if(!box) return;
 
   try {
-    const res = await fetch(`${AUTH_URL}/reviews/tmdb/${movieId}`);
+    const res = await fetch(`${AUTH_URL}/reviews/${movieId}`);
     
     if (!res.ok) {
         box.innerHTML = "<p style='color:#666;'>目前尚無評論。</p>";

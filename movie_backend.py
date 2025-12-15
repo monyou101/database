@@ -7,14 +7,25 @@ import jwt
 import datetime
 import time
 from threading import Lock
-from database import connect_db, fetch_and_store_movie, get_movie_id_from_tmdb_id, fetch_and_store_actor, get_actor_id_from_tmdb_id, get_tmdb_id_from_actor_id
+from database import (
+    connect_db, 
+    fetch_and_store_movie, 
+    fetch_and_store_actor,
+    get_movie_id_from_tmdb_id,
+    get_actor_id_from_tmdb_id,
+    get_tmdb_id_from_actor_id,
+    get_movie_basic,
+    get_actor_basic,
+    normalize_movie_row,
+    normalize_actor_row
+)
 from tmdb_api import fetch_tmdb_data
 
 app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
 CORS(app)
 Compress(app)  # 自動壓縮 JSON 回應
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev_secret_key')
-CACHE_TTL_SECONDS = 600  # 10 分鐘 TTL
+CACHE_TTL_SECONDS = 1800 # 30 分鐘 TTL
 _cache = {}              # key -> {'ts': timestamp, 'data': any}
 _cache_lock = Lock()
 
@@ -144,38 +155,6 @@ def get_movies():
     conn.close()
     return jsonify(movies)
 
-@app.route('/movies/tmdb/<int:tmdb_id>', methods=['GET'])
-def get_movie_by_tmdb_id(tmdb_id):
-    # 嘗試直接從 DB 讀
-    actor_id = get_actor_id_from_tmdb_id(tmdb_id)
-    if actor_id:
-        return get_actor_detail(actor_id)
-
-    # 快取檢查，避免短時間重複打 TMDB
-    cache_key = f"tmdb:person:{tmdb_id}"
-    cached = cache_get(cache_key)
-    if cached:
-        # 有快取但 DB 無資料，補一次寫入（避免高頻）
-        try:
-            fetch_and_store_actor(tmdb_id)
-        except Exception:
-            pass
-        actor_id = get_actor_id_from_tmdb_id(tmdb_id)
-        if actor_id:
-            return get_actor_detail(actor_id)
-        return jsonify(cached)
-
-    # 打 TMDB 並寫 DB
-    try:
-        fetch_and_store_movie(tmdb_id)
-        movie_id = get_movie_id_from_tmdb_id(tmdb_id)
-        if movie_id:
-            return get_movie_detail(movie_id)
-        else:
-            return jsonify({'error': 'Failed to retrieve movie after TMDB fetch'}), 500
-    except Exception as e:
-        return jsonify({'error': f'Failed to fetch movie from TMDB: {e}'}), 500
-
 @app.route('/movies/<int:movie_id>', methods=['GET'])
 def get_movie_detail(movie_id):
     """獲取電影詳細資訊（匹配 Movie.html 詳細頁）"""
@@ -186,6 +165,8 @@ def get_movie_detail(movie_id):
     cur.execute("SELECT * FROM MOVIE WHERE movie_id = %s", (movie_id,))
     movie = cur.fetchone()
     if not movie:
+        cur.close()
+        conn.close()
         return jsonify({'error': 'Movie not found'}), 404
     
     # 演員
@@ -250,38 +231,6 @@ def get_actors():
     conn.close()
     return jsonify(actors)
 
-@app.route('/actors/tmdb/<int:tmdb_id>', methods=['GET'])
-def get_actor_by_tmdb_id(tmdb_id):
-    # 嘗試直接從 DB 讀
-    actor_id = get_actor_id_from_tmdb_id(tmdb_id)
-    if actor_id:
-        return get_actor_detail(actor_id)
-
-    # 快取檢查，避免短時間重複打 TMDB
-    cache_key = f"tmdb:person:{tmdb_id}"
-    cached = cache_get(cache_key)
-    if cached:
-        # 有快取但 DB 無資料，補一次寫入（避免高頻）
-        try:
-            fetch_and_store_actor(tmdb_id)
-        except Exception:
-            pass
-        actor_id = get_actor_id_from_tmdb_id(tmdb_id)
-        if actor_id:
-            return get_actor_detail(actor_id)
-        return jsonify(cached)
-
-    # 打 TMDB 並寫 DB
-    try:
-        fetch_and_store_actor(tmdb_id)
-        actor_id = get_actor_id_from_tmdb_id(tmdb_id)
-        if actor_id:
-            return get_actor_detail(actor_id)
-        else:
-            return jsonify({'error': 'Failed to retrieve movie after TMDB fetch'}), 500
-    except Exception as e:
-        return jsonify({'error': f'Failed to fetch movie from TMDB: {e}'}), 500
-
 @app.route('/actors/<int:actor_id>', methods=['GET'])
 def get_actor_detail(actor_id):
     tmdb_id = get_tmdb_id_from_actor_id(actor_id)
@@ -294,6 +243,8 @@ def get_actor_detail(actor_id):
     cur.execute("SELECT * FROM ACTOR WHERE actor_id = %s", (actor_id,))
     actor = cur.fetchone()
     if not actor:
+        cur.close()
+        conn.close()
         return jsonify({'error': 'Actor not found'}), 404
     
     # 參與電影（作為演員）
@@ -341,7 +292,7 @@ def add_review():
     
     data = request.json
     target_type = data.get('target_type')  # 'MOVIE', 'ACTOR' 等
-    target_id = get_movie_id_from_tmdb_id(data.get('target_id'))
+    target_id = data.get('target_id')
     rating = data.get('rating', 5)
     title = data.get('title', '')
     body = data.get('body')
@@ -366,22 +317,6 @@ def add_review():
     finally:
         cur.close()
         conn.close()
-
-@app.route('/reviews/tmdb/<int:tmdb_id>', methods=['GET'])
-def get_movie_review_by_tmdb_id(tmdb_id):
-    movie_id = get_movie_id_from_tmdb_id(tmdb_id)
-    if movie_id:
-        return get_movie_review(movie_id)
-    else:
-        try:
-            fetch_and_store_movie(tmdb_id)
-            movie_id = get_movie_id_from_tmdb_id(tmdb_id)
-            if movie_id:
-                return get_movie_review(movie_id)
-            else:
-                return jsonify({'reviews': [], 'message': 'Failed to retrieve movie after TMDB fetch'}), 500
-        except Exception as e:
-            return jsonify({'reviews': [], 'message': f'Failed to fetch movie from TMDB: {e}'}), 500
 
 @app.route('/reviews/<int:movie_id>', methods=['GET'])
 def get_movie_review(movie_id):
@@ -481,34 +416,55 @@ def search_all():
     results = fetch_tmdb_concurrent(urls_params)
     movie_block, person_block = results[0], results[1]
 
-    # 將搜尋到的新電影/人物寫入 DB（僅不存在者）
+    conn = connect_db()
+    cur = conn.cursor(dictionary=True)
     try:
-        # 寫電影
-        for m in movie_block.get('results', []) if isinstance(movie_block, dict) else []:
+        # 映射電影
+        normalized_movies = []
+        for m in movie_block.get('results', [])[:12] if isinstance(movie_block, dict) else []:
             tmdb_id = m.get('id')
-            if not tmdb_id or is_seen_movie(tmdb_id):
+            if not tmdb_id:
                 continue
-            try:
-                fetch_and_store_movie(tmdb_id)
-                mark_seen_movie(tmdb_id)
-            except Exception:
-                pass
-        # 寫人物（僅基本資料）
-        for p in person_block.get('results', []) if isinstance(person_block, dict) else []:
+            if not is_seen_movie(tmdb_id):
+                try:
+                    fetch_and_store_movie(tmdb_id)
+                    mark_seen_movie(tmdb_id)
+                except Exception as e:
+                    print(f"Warning: Failed to store movie {tmdb_id}: {e}")
+                    continue
+            mid = get_movie_id_from_tmdb_id(tmdb_id)
+            if mid:
+                row = get_movie_basic(cur, mid)
+                nm = normalize_movie_row(row)
+                if nm:
+                    normalized_movies.append(nm)
+        # 映射人物
+        normalized_people = []
+        for p in person_block.get('results', [])[:12] if isinstance(person_block, dict) else []:
             tmdb_pid = p.get('id')
-            if not tmdb_pid or is_seen_person(tmdb_pid):
+            if not tmdb_pid:
                 continue
-            try:
-                fetch_and_store_actor(tmdb_pid)
-                mark_seen_person(tmdb_pid)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            if not is_seen_person(tmdb_pid):
+                try:
+                    fetch_and_store_actor(tmdb_pid)
+                    mark_seen_person(tmdb_pid)
+                except Exception as e:
+                    print(f"Warning: Failed to store actor {tmdb_pid}: {e}")
+                    continue
+            aid = get_actor_id_from_tmdb_id(tmdb_pid)
+            if aid:
+                row = get_actor_basic(cur, aid)
+                na = normalize_actor_row(row)
+                if na:
+                    normalized_people.append(na)
 
-    payload = {'movie': movie_block, 'person': person_block}
-    cache_set(cache_key, payload)
-    return jsonify(payload)
+        payload = {'movie': normalized_movies, 'person': normalized_people}
+        cache_set(cache_key, payload)
+        return jsonify(payload)
+
+    finally:
+        cur.close()
+        conn.close()
 
 @app.route('/api/trending/movie/<path:time_window>', methods=['GET'])
 def trending_movie(time_window):
@@ -540,36 +496,48 @@ def trending_all():
     ]
     results = fetch_tmdb_concurrent(urls_params)
 
+    conn = connect_db()
+    cur = conn.cursor(dictionary=True)
+
     # 寫入 DB：僅新項目，並標記 seen，降低頻率
     try:
+        normalized_blocks = []
         for block in results:
+            normalized_movies = []
             for m in block.get('results', []) if isinstance(block, dict) else []:
                 tmdb_id = m.get('id')
                 if not tmdb_id:
                     continue
-                if is_seen_movie(tmdb_id):
-                    continue
-                # 交給資料層（內含存在檢查與 upsert）
-                try:
-                    fetch_and_store_movie(tmdb_id)
-                    mark_seen_movie(tmdb_id)
-                except Exception:
-                    # 靜默失敗以免影響回應
-                    pass
-    except Exception:
-        # 靜默，以免影響回應
-        pass
+                if not is_seen_movie(tmdb_id):
+                    try:
+                        fetch_and_store_movie(tmdb_id)
+                        mark_seen_movie(tmdb_id)
+                    except Exception as e:
+                        print(f"Warning: Failed to store movie {tmdb_id}: {e}")
+                        continue
+                movie_id = get_movie_id_from_tmdb_id(tmdb_id)
+                if movie_id:
+                    row = get_movie_basic(cur, movie_id)
+                    nm = normalize_movie_row(row)
+                    if nm:
+                        normalized_movies.append(nm)
+            
+            normalized_blocks.append(normalized_movies)
 
-    payload = {
-        'day': results[0],
-        'week': results[1],
-        'now_playing': results[2],
-        'upcoming': results[3]
-    }
-    cache_set(cache_key, payload)
-    # 每次建立大快取，重置 seen 集（避免永久成長）
-    reset_seen_sets()
-    return jsonify(payload)
+        payload = {
+            'day': normalized_blocks[0] if len(normalized_blocks) > 0 else [],
+            'week': normalized_blocks[1] if len(normalized_blocks) > 1 else [],
+            'now_playing': normalized_blocks[2] if len(normalized_blocks) > 2 else [],
+            'upcoming': normalized_blocks[3] if len(normalized_blocks) > 3 else []
+        }
+
+        cache_set(cache_key, payload)
+        reset_seen_sets()
+        return jsonify(payload)
+        
+    finally:
+        cur.close()
+        conn.close()
 
 @app.route('/api/cmd', methods=['POST'])
 def cli_cmd():

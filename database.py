@@ -153,9 +153,6 @@ def ensure_director(cur, movie_id, actor_id):
     cur.execute("""
         INSERT IGNORE INTO DIRECTOR (movie_id, actor_id)
         VALUES (%s,%s)
-        ON DUPLICATE KEY UPDATE
-            character_name=COALESCE(VALUES(character_name), character_name),
-            billing_order=COALESCE(VALUES(billing_order), billing_order)
     """, (movie_id, actor_id))
 
 def fetch_and_store_movie(tmdb_movie_id):
@@ -247,3 +244,49 @@ def fetch_and_store_actor(tmdb_actor_id):
     finally:
         cur.close()
         conn.close()
+
+def get_movie_basic(cur, movie_id):
+    cur.execute("SELECT movie_id, title, release_year, genre, rating, poster_url FROM MOVIE WHERE movie_id=%s", (movie_id,))
+    return cur.fetchone()
+
+def get_actor_basic(cur, actor_id):
+    cur.execute("SELECT actor_id, name, birthdate, country, profile_url FROM ACTOR WHERE actor_id=%s", (actor_id,))
+    return cur.fetchone()
+
+def ensure_movie_by_tmdb(tmdb_movie_id):
+    """確保電影存在於 DB，若不存在則抓 TMDB 並入庫；回傳 movie_id"""
+    movie_id = get_movie_id_from_tmdb_id(tmdb_movie_id)
+    if movie_id:
+        return movie_id
+    fetch_and_store_movie(tmdb_movie_id)
+    return get_movie_id_from_tmdb_id(tmdb_movie_id)
+
+def ensure_actor_by_tmdb(tmdb_actor_id):
+    """確保演員存在於 DB，若不存在則抓 TMDB 並入庫；回傳 actor_id"""
+    actor_id = get_actor_id_from_tmdb_id(tmdb_actor_id)
+    if actor_id:
+        return actor_id
+    fetch_and_store_actor(tmdb_actor_id)
+    return get_actor_id_from_tmdb_id(tmdb_actor_id)
+
+# 提供標準化輸出物件（前端不再用 tmdb_id）
+def normalize_movie_row(row):
+    if not row: return None
+    return {
+        'movie_id': row.get('movie_id') if isinstance(row, dict) else row[0],
+        'title': row.get('title') if isinstance(row, dict) else row[1],
+        'release_year': row.get('release_year') if isinstance(row, dict) else row[2],
+        'genre': row.get('genre') if isinstance(row, dict) else row[3],
+        'rating': row.get('rating') if isinstance(row, dict) else row[4],
+        'poster_url': row.get('poster_url') if isinstance(row, dict) else row[5]
+    }
+
+def normalize_actor_row(row):
+    if not row: return None
+    return {
+        'actor_id': row.get('actor_id') if isinstance(row, dict) else row[0],
+        'name': row.get('name') if isinstance(row, dict) else row[1],
+        'birthdate': row.get('birthdate') if isinstance(row, dict) else row[2],
+        'country': row.get('country') if isinstance(row, dict) else row[3],
+        'profile_url': row.get('profile_url') if isinstance(row, dict) else row[4]
+    }

@@ -1,11 +1,6 @@
 const IMG_BASE = "https://image.tmdb.org/t/p/w500";
 const BACKEND_URL = "https://database-production-55fc.up.railway.app";
 
-function imgUrl(path) {
-  if (!path) return "No_image_available.png";
-  return `${IMG_BASE}${path}`;
-}
-
 // ======= 1. 搜尋功能 =======
 async function smartSearch() {
   const input = document.getElementById("searchInput").value.trim();
@@ -26,8 +21,8 @@ async function smartSearch() {
     const res = await fetch(`${BACKEND_URL}/api/search/all?query=${encodeURIComponent(input)}`);
     const data = await res.json();
     
-    const movieResults = (data.movie.results || []).slice(0, 12);
-    const peopleResults = (data.person.results || []).slice(0, 12);
+    const movieResults = (data.movie || []).slice(0, 12);
+    const peopleResults = (data.person || []).slice(0, 12);
 
     if (movieResults.length === 0 && peopleResults.length === 0) {
       message.textContent = "查無相關電影或人物。";
@@ -61,14 +56,14 @@ async function smartSearch() {
 
 function showMovieListFromAPI(list, targetId) {
   const box = document.getElementById(targetId);
-  const filteredList = list.filter(m => m.release_date);
+  const filteredList = list.filter(m => m.release_year);
   box.innerHTML = filteredList
     .map(m => {
-      const poster = imgUrl(m.poster_path);
-      const year = m.release_date ? m.release_date.slice(0, 4) : "未知年份";
-      const rating = m.vote_average ? m.vote_average.toFixed(1) : "N/A";
+      const poster = m.poster_url || "No_image_available.png";
+      const year = m.release_year || "未知年份";
+      const rating = m.rating || "N/A";
       return `
-        <div class="movie-card" onclick="goMovieDetail(${m.id})">
+        <div class="movie-card" onclick="goMovieDetail(${m.movie_id})">
           <img src="${poster}" class="movie-poster" alt="${m.title}">
           <div class="movie-title">${m.title}</div>
           <div class="movie-meta">${year}</div>
@@ -81,12 +76,12 @@ function showMovieListFromAPI(list, targetId) {
 
 function showPeopleListFromAPI(list, targetId) {
   const box = document.getElementById(targetId);
-  const filteredList = list.filter(m => m.profile_path);
+  const filteredList = list.filter(m => m.profile_url);
   box.innerHTML = filteredList
     .map(p => {
-      const photo = imgUrl(p.profile_path);
+      const photo = p.profile_url || "No_image_available.png";
       return `
-        <div class="person-card" onclick="openPersonModal(${p.id})">
+        <div class="person-card" onclick="openPersonModal(${p.actor_id})">
           <img src="${photo}" class="person-photo" alt="${p.name}">
           <div class="person-name">${p.name}</div>
         </div>
@@ -101,10 +96,10 @@ async function loadTrending() {
     const res = await fetch(`${BACKEND_URL}/api/trending/all`);
     const data = await res.json();
     
-    showRankRow(data.day.results || [], "rankTodayRow");
-    showRankRow(data.week.results || [], "rankWeekRow");
-    showRankRow(data.now_playing.results || [], "rankNowRow");
-    showRankRow(data.upcoming.results || [], "rankUpcomingRow");
+    showRankRow(data.day || [], "rankTodayRow");
+    showRankRow(data.week || [], "rankWeekRow");
+    showRankRow(data.now_playing || [], "rankNowRow");
+    showRankRow(data.upcoming || [], "rankUpcomingRow");
   } catch (err) {
     console.error("載入排行榜失敗", err);
   }
@@ -115,11 +110,11 @@ function showRankRow(results, targetId) {
   const list = (results || []).slice(0, 15);
   box.innerHTML = list
     .map(m => {
-      const poster = imgUrl(m.poster_path);
+      const poster = m.poster_url || "No_image_available.png";
       const year = m.release_date ? m.release_date.slice(0, 4) : "未知";
       const rating = m.vote_average ? m.vote_average.toFixed(1) : "N/A";
       return `
-        <div class="rank-card" onclick="goMovieDetail(${m.id})">
+        <div class="rank-card" onclick="goMovieDetail(${m.movie_id})">
           <img src="${poster}" class="rank-poster" alt="${m.title}">
           <div class="rank-title">${m.title}</div>
           <div class="rank-meta">${year}</div>
@@ -148,7 +143,7 @@ async function openPersonModal(personId) {
 
   try {
     // ★ 呼叫後端取得演員詳細資料
-    const res = await fetch(`${BACKEND_URL}/actors/tmdb/${personId}`);
+    const res = await fetch(`${BACKEND_URL}/actors/${personId}`);
     if (!res.ok) throw new Error("API Error");
     const data = await res.json();
 
