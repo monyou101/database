@@ -38,7 +38,13 @@ def upsert_movie(cur, tmdb_id, title, release_year, genre, runtime, overview, ra
         INSERT INTO MOVIE (tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE
-          title=VALUES(title), release_year=VALUES(release_year), genre=VALUES(genre), runtime=VALUES(runtime), overview=VALUES(overview), rating=VALUES(rating), poster_url=VALUES(poster_url)
+          title=COALESCE(VALUES(title), title),
+          release_year=COALESCE(VALUES(release_year), release_year),
+          genre=COALESCE(VALUES(genre), genre),
+          runtime=COALESCE(VALUES(runtime), runtime),
+          overview=COALESCE(VALUES(overview), overview),
+          rating=COALESCE(VALUES(rating), rating),
+          poster_url=COALESCE(VALUES(poster_url), poster_url)
     """, (tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url))
     # 回傳 movie_id
     cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id=%s", (tmdb_id,))
@@ -88,7 +94,9 @@ def upsert_actor(cur, tmdb_id, name, profile_url=None):
     cur.execute("""
         INSERT INTO ACTOR (tmdb_id, name, profile_url)
         VALUES (%s,%s,%s)
-        ON DUPLICATE KEY UPDATE name=VALUES(name), profile_url=VALUES(profile_url)
+        ON DUPLICATE KEY UPDATE
+            name=COALESCE(VALUES(name), name),
+            profile_url=COALESCE(VALUES(profile_url), profile_url)
     """, (tmdb_id, name, profile_url))
     cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
@@ -121,7 +129,11 @@ def upsert_actor_detail(cur, tmdb_id, name, profile_url=None, birthdate=None, co
     cur.execute("""
         INSERT INTO ACTOR (tmdb_id, name, profile_url, birthdate, country)
         VALUES (%s,%s,%s,%s,%s)
-        ON DUPLICATE KEY UPDATE name=VALUES(name), profile_url=VALUES(profile_url), birthdate=VALUES(birthdate), country=VALUES(country)
+        ON DUPLICATE KEY UPDATE
+            name=COALESCE(VALUES(name), name),
+            profile_url=COALESCE(VALUES(profile_url), profile_url),
+            birthdate=COALESCE(VALUES(birthdate), birthdate),
+            country=COALESCE(VALUES(country), country)
     """, (tmdb_id, name, profile_url, birthdate, country))
     cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
@@ -141,6 +153,9 @@ def ensure_director(cur, movie_id, actor_id):
     cur.execute("""
         INSERT IGNORE INTO DIRECTOR (movie_id, actor_id)
         VALUES (%s,%s)
+        ON DUPLICATE KEY UPDATE
+            character_name=COALESCE(VALUES(character_name), character_name),
+            billing_order=COALESCE(VALUES(billing_order), billing_order)
     """, (movie_id, actor_id))
 
 def fetch_and_store_movie(tmdb_movie_id):

@@ -5,6 +5,8 @@ import os
 import concurrent.futures  # 新增並發
 import jwt
 import datetime
+import time
+from threading import Lock
 from database import connect_db, fetch_and_store_movie, get_movie_id_from_tmdb_id, fetch_and_store_actor, get_actor_id_from_tmdb_id, get_tmdb_id_from_actor_id
 from tmdb_api import fetch_tmdb_data
 
@@ -12,6 +14,51 @@ app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
 CORS(app)
 Compress(app)  # 自動壓縮 JSON 回應
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev_secret_key')
+CACHE_TTL_SECONDS = 600  # 10 分鐘 TTL
+_cache = {}              # key -> {'ts': timestamp, 'data': any}
+_cache_lock = Lock()
+
+def cache_get(key):
+    with _cache_lock:
+        item = _cache.get(key)
+        if not item:
+            return None
+        if time.time() - item['ts'] > CACHE_TTL_SECONDS:
+            # 過期
+            _cache.pop(key, None)
+            return None
+        return item['data']
+
+def cache_set(key, data):
+    with _cache_lock:
+        _cache[key] = {'ts': time.time(), 'data': data}
+
+# 去重集合：避免在同一個 TTL 期間重複寫入 DB
+_seen_tmdb_movies = set()
+_seen_tmdb_persons = set()
+_seen_lock = Lock()
+
+def mark_seen_movie(tmdb_id):
+    with _seen_lock:
+        _seen_tmdb_movies.add(tmdb_id)
+
+def is_seen_movie(tmdb_id):
+    with _seen_lock:
+        return tmdb_id in _seen_tmdb_movies
+
+def mark_seen_person(tmdb_id):
+    with _seen_lock:
+        _seen_tmdb_persons.add(tmdb_id)
+
+def is_seen_person(tmdb_id):
+    with _seen_lock:
+        return tmdb_id in _seen_tmdb_persons
+
+# 每次 TTL 清理（簡易：在 cache_set 旁執行時機再決定是否重置）
+def reset_seen_sets():
+    with _seen_lock:
+        _seen_tmdb_movies.clear()
+        _seen_tmdb_persons.clear()
 
 # 用戶認證 API（匹配 UI 登入/註冊功能）
 @app.route('/auth/register', methods=['POST'])
@@ -99,6 +146,26 @@ def get_movies():
 
 @app.route('/movies/tmdb/<int:tmdb_id>', methods=['GET'])
 def get_movie_by_tmdb_id(tmdb_id):
+    # 嘗試直接從 DB 讀
+    actor_id = get_actor_id_from_tmdb_id(tmdb_id)
+    if actor_id:
+        return get_actor_detail(actor_id)
+
+    # 快取檢查，避免短時間重複打 TMDB
+    cache_key = f"tmdb:person:{tmdb_id}"
+    cached = cache_get(cache_key)
+    if cached:
+        # 有快取但 DB 無資料，補一次寫入（避免高頻）
+        try:
+            fetch_and_store_actor(tmdb_id)
+        except Exception:
+            pass
+        actor_id = get_actor_id_from_tmdb_id(tmdb_id)
+        if actor_id:
+            return get_actor_detail(actor_id)
+        return jsonify(cached)
+
+    # 打 TMDB 並寫 DB
     try:
         fetch_and_store_movie(tmdb_id)
         movie_id = get_movie_id_from_tmdb_id(tmdb_id)
@@ -185,6 +252,26 @@ def get_actors():
 
 @app.route('/actors/tmdb/<int:tmdb_id>', methods=['GET'])
 def get_actor_by_tmdb_id(tmdb_id):
+    # 嘗試直接從 DB 讀
+    actor_id = get_actor_id_from_tmdb_id(tmdb_id)
+    if actor_id:
+        return get_actor_detail(actor_id)
+
+    # 快取檢查，避免短時間重複打 TMDB
+    cache_key = f"tmdb:person:{tmdb_id}"
+    cached = cache_get(cache_key)
+    if cached:
+        # 有快取但 DB 無資料，補一次寫入（避免高頻）
+        try:
+            fetch_and_store_actor(tmdb_id)
+        except Exception:
+            pass
+        actor_id = get_actor_id_from_tmdb_id(tmdb_id)
+        if actor_id:
+            return get_actor_detail(actor_id)
+        return jsonify(cached)
+
+    # 打 TMDB 並寫 DB
     try:
         fetch_and_store_actor(tmdb_id)
         actor_id = get_actor_id_from_tmdb_id(tmdb_id)
@@ -339,12 +426,19 @@ def get_popular_movies():
     return jsonify(movies)
 
 def fetch_tmdb_concurrent(urls_params):
+    import json
+    # 先檢查快取，僅對未命中項目呼叫 TMDB
     def fetch_single(url, params):
-        return fetch_tmdb_data(url, params)
+        cache_key = f"tmdb:{url}:{json.dumps(params, sort_keys=True)}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+        data = fetch_tmdb_data(url, params)
+        cache_set(cache_key, data)
+        return data
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         futures = [executor.submit(fetch_single, url, params) for url, params in urls_params]
-        # 保持結果順序，初始化為 None
         results = [None] * len(futures)
         for idx, future in enumerate(futures):
             try:
@@ -374,16 +468,47 @@ def search_all():
     query = request.args.get('query')
     if not query:
         return jsonify({'error': 'Missing query'}), 400
+
+    cache_key = f"tmdb:search_all:{query}"
+    cached = cache_get(cache_key)
+    if cached:
+        return jsonify(cached)
     
     urls_params = [
         ('/search/movie', {'query': query}),
         ('/search/person', {'query': query})
     ]
     results = fetch_tmdb_concurrent(urls_params)
-    return jsonify({
-        'movie': results[0],
-        'person': results[1]
-    })
+    movie_block, person_block = results[0], results[1]
+
+    # 將搜尋到的新電影/人物寫入 DB（僅不存在者）
+    try:
+        # 寫電影
+        for m in movie_block.get('results', []) if isinstance(movie_block, dict) else []:
+            tmdb_id = m.get('id')
+            if not tmdb_id or is_seen_movie(tmdb_id):
+                continue
+            try:
+                fetch_and_store_movie(tmdb_id)
+                mark_seen_movie(tmdb_id)
+            except Exception:
+                pass
+        # 寫人物（僅基本資料）
+        for p in person_block.get('results', []) if isinstance(person_block, dict) else []:
+            tmdb_pid = p.get('id')
+            if not tmdb_pid or is_seen_person(tmdb_pid):
+                continue
+            try:
+                fetch_and_store_actor(tmdb_pid)
+                mark_seen_person(tmdb_pid)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    payload = {'movie': movie_block, 'person': person_block}
+    cache_set(cache_key, payload)
+    return jsonify(payload)
 
 @app.route('/api/trending/movie/<path:time_window>', methods=['GET'])
 def trending_movie(time_window):
@@ -402,6 +527,11 @@ def movie_endpoint(endpoint):
 
 @app.route('/api/trending/all', methods=['GET'])
 def trending_all():
+    cache_key = "tmdb:trending_all"
+    cached = cache_get(cache_key)
+    if cached:
+        return jsonify(cached)
+
     urls_params = [
         ('/trending/movie/day', {}),
         ('/trending/movie/week', {}),
@@ -409,12 +539,37 @@ def trending_all():
         ('/movie/upcoming', {'region': 'TW'})
     ]
     results = fetch_tmdb_concurrent(urls_params)
-    return jsonify({
+
+    # 寫入 DB：僅新項目，並標記 seen，降低頻率
+    try:
+        for block in results:
+            for m in block.get('results', []) if isinstance(block, dict) else []:
+                tmdb_id = m.get('id')
+                if not tmdb_id:
+                    continue
+                if is_seen_movie(tmdb_id):
+                    continue
+                # 交給資料層（內含存在檢查與 upsert）
+                try:
+                    fetch_and_store_movie(tmdb_id)
+                    mark_seen_movie(tmdb_id)
+                except Exception:
+                    # 靜默失敗以免影響回應
+                    pass
+    except Exception:
+        # 靜默，以免影響回應
+        pass
+
+    payload = {
         'day': results[0],
         'week': results[1],
         'now_playing': results[2],
         'upcoming': results[3]
-    })
+    }
+    cache_set(cache_key, payload)
+    # 每次建立大快取，重置 seen 集（避免永久成長）
+    reset_seen_sets()
+    return jsonify(payload)
 
 @app.route('/api/cmd', methods=['POST'])
 def cli_cmd():
