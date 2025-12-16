@@ -367,22 +367,31 @@ def trending_all():
     print(f"[PERF-DETAIL] trending_all: tmdb_fetch={time.time()-t_fetch:.3f}s")
 
     try:
-        normalized_blocks = []
-        t_process = time.time()
-        for block_idx, block in enumerate(results):
+        # 第一階段：收集所有 tmdb_ids 並一次性查詢
+        t_collect = time.time()
+        all_blocks_tmdb_ids = []
+        for block in results:
             movie_results = block.get('results', []) if isinstance(block, dict) else []
             movie_tmdb_ids = [m.get('id') for m in movie_results if m.get('id')]
-
-            if movie_tmdb_ids:
-                t_get_existing = time.time()
-                existing_map = get_movies_by_tmdb_ids(movie_tmdb_ids)
-                print(f"[PERF-DETAIL]   block{block_idx} get_movies_by_tmdb_ids({len(movie_tmdb_ids)}): {time.time()-t_get_existing:.3f}s")
-                
-                missing = [mid for mid in movie_tmdb_ids if mid not in existing_map]
-                if missing:
-                    print(f"[PERF-DETAIL]   block{block_idx} missing movies: {len(missing)}")
-                    t_store = time.time()
-                    for tmdb_id in missing:
+            all_blocks_tmdb_ids.append(movie_tmdb_ids)
+        
+        # 合併所有 tmdb_ids 並一次查詢
+        all_unique_tmdb_ids = list(set([tid for block_ids in all_blocks_tmdb_ids for tid in block_ids]))
+        print(f"[PERF-DETAIL] trending_all: collect={time.time()-t_collect:.3f}s, total_movies={len(all_unique_tmdb_ids)}")
+        
+        t_query_all = time.time()
+        all_movies_map = get_movies_by_tmdb_ids(all_unique_tmdb_ids) if all_unique_tmdb_ids else {}
+        print(f"[PERF-DETAIL] trending_all: get_all_movies({len(all_unique_tmdb_ids)}): {time.time()-t_query_all:.3f}s")
+        
+        # 第二階段：處理缺失的電影
+        t_store = time.time()
+        missing = [mid for mid in all_unique_tmdb_ids if mid not in all_movies_map]
+        if missing:
+            print(f"[PERF-DETAIL] trending_all: missing movies: {len(missing)}")
+            for block_idx, block in enumerate(results):
+                movie_results = block.get('results', []) if isinstance(block, dict) else []
+                for tmdb_id in missing:
+                    if tmdb_id in all_blocks_tmdb_ids[block_idx]:
                         mark_seen_movie(tmdb_id)
                         m = next((x for x in movie_results if x.get('id') == tmdb_id), None)
                         if m:
@@ -390,10 +399,12 @@ def trending_all():
                                 store_movie(tmdb_id, m)
                             except Exception as e:
                                 print(f"Warning: Failed to store movie {tmdb_id}: {e}")
-                    print(f"[PERF-DETAIL]   block{block_idx} store_missing({len(missing)}): {time.time()-t_store:.3f}s")
-
-            movies_data = get_movies_by_tmdb_ids(movie_tmdb_ids) if movie_tmdb_ids else {}
-            normalized_movies = [normalize_movie_row(m) for m in movies_data.values()]
+            print(f"[PERF-DETAIL] trending_all: store_missing({len(missing)}): {time.time()-t_store:.3f}s")
+        
+        # 第三階段：組裝結果
+        normalized_blocks = []
+        for movie_tmdb_ids in all_blocks_tmdb_ids:
+            normalized_movies = [normalize_movie_row(all_movies_map[tid]) for tid in movie_tmdb_ids if tid in all_movies_map]
             normalized_blocks.append(normalized_movies)
         
         print(f"[PERF-DETAIL] trending_all: process={time.time()-t_process:.3f}s")
