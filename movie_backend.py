@@ -217,12 +217,6 @@ def get_actors():
 @app.route('/actors/<int:actor_id>', methods=['GET'])
 def get_actor_detail_route(actor_id):
     """獲取演員詳細資訊"""
-    tmdb_id = get_tmdb_id_from_actor_id(actor_id)
-    if tmdb_id is not None:
-        fetch_and_store_actor(actor_id, tmdb_id)
-    else:
-        print(f"Warning: Failed to get actor_tmdb_id: {actor_id}")
-    
     actor = get_actor_detail(actor_id)
     if not actor:
         return jsonify({'error': 'Actor not found'}), 404

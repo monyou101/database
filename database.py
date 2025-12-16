@@ -582,16 +582,26 @@ def search_actors(query, page=1, limit=20):
 
 def get_actor_detail(actor_id):
     """獲取演員詳細資訊（含參演電影）"""
+    import time
+    t_start = time.time()
+    
+    t_conn_start = time.time()
     conn = connect_db()
+    t_conn_time = time.time() - t_conn_start
+    
     cur = conn.cursor(dictionary=True)
     
+    t_query_start = time.time()
     cur.execute("SELECT * FROM ACTOR WHERE actor_id = %s", (actor_id,))
     actor = cur.fetchone()
+    t_query1 = time.time() - t_query_start
+    
     if not actor:
         cur.close()
         conn.close()
         return None
     
+    t_query_start = time.time()
     cur.execute("""
         SELECT m.movie_id, m.title, m.release_year, m.genre, m.rating, m.poster_url, mc.character_name
         FROM MOVIE m
@@ -600,7 +610,9 @@ def get_actor_detail(actor_id):
         ORDER BY m.release_year DESC
     """, (actor_id,))
     actor['movies_as_actor'] = cur.fetchall()
+    t_query2 = time.time() - t_query_start
     
+    t_query_start = time.time()
     cur.execute("""
         SELECT m.movie_id, m.title, m.release_year, m.genre, m.rating, m.poster_url
         FROM MOVIE m
@@ -609,9 +621,14 @@ def get_actor_detail(actor_id):
         ORDER BY m.release_year DESC
     """, (actor_id,))
     actor['movies_as_director'] = cur.fetchall()
+    t_query3 = time.time() - t_query_start
     
     cur.close()
     conn.close()
+    
+    t_total = time.time() - t_start
+    print(f"[PERF-DETAIL] actor_detail({actor_id}): conn={t_conn_time:.3f}s, q1={t_query1:.3f}s, q2={t_query2:.3f}s, q3={t_query3:.3f}s, total={t_total:.3f}s")
+    
     return actor
 
 # ==================== 評論管理 ====================
