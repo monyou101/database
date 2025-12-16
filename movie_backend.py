@@ -13,10 +13,11 @@ from database import (
     check_movie_detail,
     check_actor_detail,
     get_movie_id_from_tmdb_id,
+    get_movies_by_tmdb_ids,
+    get_tmdb_id_from_movie_id,
     get_actor_id_from_tmdb_id,
+    get_actors_by_tmdb_ids,
     get_tmdb_id_from_actor_id,
-    get_movie_basic,
-    get_actor_basic,
     normalize_movie_row,
     normalize_actor_row,
     create_user,
@@ -78,9 +79,8 @@ def reset_seen_sets():
         _seen_tmdb_movies.clear()
         _seen_tmdb_persons.clear()
 
-def fetch_and_store_movie(tmdb_movie_id):
+def fetch_and_store_movie(movie_id, tmdb_movie_id):
     """從 TMDB 獲取電影資料並存入資料庫"""
-    movie_id = get_movie_id_from_tmdb_id(tmdb_movie_id)
     if movie_id is None or check_movie_detail(movie_id) is False:
         try:
             movie_data = fetch_tmdb_data(f"/movie/{tmdb_movie_id}", params={"append_to_response": "credits,genres"})
@@ -91,9 +91,8 @@ def fetch_and_store_movie(tmdb_movie_id):
     else:
         return movie_id
 
-def fetch_and_store_actor(tmdb_actor_id):
+def fetch_and_store_actor(actor_id, tmdb_actor_id):
     """從 TMDB 獲取演員資料並存入資料庫"""
-    actor_id = get_actor_id_from_tmdb_id(tmdb_actor_id)
     if actor_id is None or check_actor_detail(actor_id) is False:
         try:
             actor_data = fetch_tmdb_data(f"/person/{tmdb_actor_id}")
@@ -164,6 +163,12 @@ def get_movies():
 @app.route('/movies/<int:movie_id>', methods=['GET'])
 def get_movie_detail_route(movie_id):
     """獲取電影詳細資訊"""
+    tmdb_id = get_tmdb_id_from_movie_id(movie_id)
+    if tmdb_id is not None:
+        fetch_and_store_movie(movie_id, tmdb_id)
+    else:
+        print(f"Warning: Failed to get movie_tmdb_id: {movie_id}")
+
     movie = get_movie_detail(movie_id)
     if not movie:
         return jsonify({'error': 'Movie not found'}), 404
@@ -183,8 +188,10 @@ def get_actors():
 def get_actor_detail_route(actor_id):
     """獲取演員詳細資訊"""
     tmdb_id = get_tmdb_id_from_actor_id(actor_id)
-    if tmdb_id:
-        fetch_and_store_actor(tmdb_id)
+    if tmdb_id is not None:
+        fetch_and_store_actor(actor_id, tmdb_id)
+    else:
+        print(f"Warning: Failed to get actor_tmdb_id: {actor_id}")
     
     actor = get_actor_detail(actor_id)
     if not actor:
@@ -271,52 +278,41 @@ def search_all():
     results = fetch_tmdb_concurrent(urls_params)
     movie_block, person_block = results[0], results[1]
 
-    # 映射電影
-    normalized_movies = []
-    for m in movie_block.get('results', [])[:12] if isinstance(movie_block, dict) else []:
-        tmdb_id = m.get('id')
-        if not tmdb_id:
-            continue
+    try:
+        movie_tmdb_ids = [m.get('id') for m in movie_block.get('results', []) if m.get('id') and not is_seen_movie(m.get('id'))]
+        actor_tmdb_ids = [p.get('id') for p in person_block.get('results', []) if p.get('id') and not is_seen_person(p.get('id'))]
         
-        if not is_seen_movie(tmdb_id):
-            try:
-                store_movie(tmdb_id, m)
-                mark_seen_movie(tmdb_id)
-            except Exception as e:
-                print(f"Warning: Failed to store movie {tmdb_id}: {e}")
-                continue
+        for tmdb_id, m in [(mid, next((x for x in movie_block.get('results', []) if x.get('id') == mid), None)) for mid in movie_tmdb_ids]:
+            if get_movie_id_from_tmdb_id(tmdb_id) is None:
+                if m:
+                    try:
+                        store_movie(tmdb_id, m)
+                        mark_seen_movie(tmdb_id)
+                    except Exception as e:
+                        print(f"Warning: Failed to store movie {tmdb_id}: {e}")
         
-        movie_id = get_movie_id_from_tmdb_id(tmdb_id)
-        if movie_id:
-            row = get_movie_basic(movie_id)
-            nm = normalize_movie_row(row)
-            if nm:
-                normalized_movies.append(nm)
-    # 映射人物
-    normalized_people = []
-    for p in person_block.get('results', [])[:12] if isinstance(person_block, dict) else []:
-        tmdb_pid = p.get('id')
-        if not tmdb_pid:
-            continue
+        for tmdb_id, p in [(pid, next((x for x in person_block.get('results', []) if x.get('id') == pid), None)) for pid in actor_tmdb_ids]:
+            if get_actor_id_from_tmdb_id(tmdb_id) is None:
+                if p:
+                    try:
+                        store_actor(tmdb_id, p)
+                        mark_seen_person(tmdb_id)
+                    except Exception as e:
+                        print(f"Warning: Failed to store actor {tmdb_id}: {e}")
         
-        if not is_seen_person(tmdb_pid):
-            try:
-                store_actor(tmdb_pid, p)
-                mark_seen_person(tmdb_pid)
-            except Exception as e:
-                print(f"Warning: Failed to store actor {tmdb_pid}: {e}")
-                continue
+        movie_map = get_movies_by_tmdb_ids([m.get('id') for m in movie_block.get('results', []) if m.get('id')])
+        actor_map = get_actors_by_tmdb_ids([p.get('id') for p in person_block.get('results', []) if p.get('id')])
         
-        actor_id = get_actor_id_from_tmdb_id(tmdb_pid)
-        if actor_id:
-            row = get_actor_basic(actor_id)
-            na = normalize_actor_row(row)
-            if na:
-                normalized_people.append(na)
-    
-    payload = {'movie': normalized_movies, 'person': normalized_people}
-    cache_set(cache_key, payload)
-    return jsonify(payload)
+        normalized_movies = [normalize_movie_row(movie_map[mid]) for mid in movie_map if movie_map[mid]]
+        normalized_people = [normalize_actor_row(actor_map[aid]) for aid in actor_map if actor_map[aid]]
+        
+        payload = {'movie': normalized_movies, 'person': normalized_people}
+        cache_set(cache_key, payload)
+        return jsonify(payload)
+        
+    except Exception as e:
+        print(f"Error in search_all: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/trending/all', methods=['GET'])
 def trending_all():
@@ -334,41 +330,40 @@ def trending_all():
     ]
     results = fetch_tmdb_concurrent(urls_params)
 
-    normalized_blocks = []
-    for block in results:
-        normalized_movies = []
-        for m in block.get('results', []) if isinstance(block, dict) else []:
-            tmdb_id = m.get('id')
-            if not tmdb_id:
-                continue
-            
-            if not is_seen_movie(tmdb_id):
-                try:
-                    fetch_and_store_movie(tmdb_id)
+    try:
+        normalized_blocks = []
+        for block in results:
+            movie_results = block.get('results', []) if isinstance(block, dict) else []
+            movie_tmdb_ids = [m.get('id') for m in movie_results if m.get('id')]
+
+            for tmdb_id, m in zip(movie_tmdb_ids, movie_results):
+                if not is_seen_movie(tmdb_id):
                     mark_seen_movie(tmdb_id)
-                except Exception as e:
-                    print(f"Warning: Failed to store movie {tmdb_id}: {e}")
-                    continue
-            
-            movie_id = get_movie_id_from_tmdb_id(tmdb_id)
-            if movie_id:
-                row = get_movie_basic(movie_id)
-                nm = normalize_movie_row(row)
-                if nm:
-                    normalized_movies.append(nm)
+                    if get_movie_id_from_tmdb_id(tmdb_id) is None:
+                        if m:
+                            try:
+                                store_movie(tmdb_id, m)
+                            except Exception as e:
+                                print(f"Warning: Failed to store movie {tmdb_id}: {e}")
         
-        normalized_blocks.append(normalized_movies)
+            movies_data = get_movies_by_tmdb_ids(movie_tmdb_ids)
+            normalized_movies = [normalize_movie_row(m) for m in movies_data.values()]
+            normalized_blocks.append(normalized_movies)
+        
+        payload = {
+            'day': normalized_blocks[0] if len(normalized_blocks) > 0 else [],
+            'week': normalized_blocks[1] if len(normalized_blocks) > 1 else [],
+            'now_playing': normalized_blocks[2] if len(normalized_blocks) > 2 else [],
+            'upcoming': normalized_blocks[3] if len(normalized_blocks) > 3 else []
+        }
 
-    payload = {
-        'day': normalized_blocks[0] if len(normalized_blocks) > 0 else [],
-        'week': normalized_blocks[1] if len(normalized_blocks) > 1 else [],
-        'now_playing': normalized_blocks[2] if len(normalized_blocks) > 2 else [],
-        'upcoming': normalized_blocks[3] if len(normalized_blocks) > 3 else []
-    }
-
-    cache_set(cache_key, payload)
-    reset_seen_sets()
-    return jsonify(payload)
+        cache_set(cache_key, payload)
+        reset_seen_sets()
+        return jsonify(payload)
+        
+    except Exception as e:
+        print(f"Error in search_all: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/cmd', methods=['POST'])
 def cli_cmd():

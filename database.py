@@ -115,6 +115,28 @@ def get_tmdb_id_from_movie_id(movie_id):
     conn.close()
     return row[0] if row else None
 
+def get_movies_by_tmdb_ids(tmdb_ids):
+    """批次獲取電影"""
+    if not tmdb_ids:
+        return {}
+    
+    conn = connect_db()
+    try:
+        cur = conn.cursor(dictionary=True)
+        placeholders = ','.join(['%s'] * len(tmdb_ids))
+        cur.execute(f"""
+            SELECT movie_id, tmdb_id, title, release_year, genre, rating, poster_url
+            FROM MOVIE
+            WHERE tmdb_id IN ({placeholders})
+            ORDER BY FIELD(tmdb_id, {placeholders})
+        """, tmdb_ids + tmdb_ids)
+        
+        results = cur.fetchall()
+        return {row['tmdb_id']: row for row in results}
+    finally:
+        cur.close()
+        conn.close()
+
 def get_movie_id_from_tmdb_id(tmdb_id):
     """從 tmdb_id 獲取 movie_id"""
     conn = connect_db()
@@ -152,6 +174,28 @@ def get_tmdb_id_from_actor_id(actor_id):
     conn.close()
     return row[0] if row else None
 
+def get_actors_by_tmdb_ids(tmdb_ids):
+    """批次獲取演員"""
+    if not tmdb_ids:
+        return {}
+    
+    conn = connect_db()
+    try:
+        cur = conn.cursor(dictionary=True)
+        placeholders = ','.join(['%s'] * len(tmdb_ids))
+        cur.execute(f"""
+            SELECT actor_id, tmdb_id, name, birthdate, country, profile_url
+            FROM ACTOR
+            WHERE tmdb_id IN ({placeholders})
+            ORDER BY FIELD(tmdb_id, {placeholders})
+        """, tmdb_ids + tmdb_ids)
+        
+        results = cur.fetchall()
+        return {row['tmdb_id']: row for row in results}
+    finally:
+        cur.close()
+        conn.close()
+
 def get_actor_id_from_tmdb_id(tmdb_id):
     """從 tmdb_id 獲取 actor_id"""
     conn = connect_db()
@@ -178,26 +222,6 @@ def check_actor_detail(actor_id):
             else:
                 return True
     return False
-
-def get_movie_basic(movie_id):
-    conn = connect_db()
-    try:
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT movie_id, title, release_year, genre, rating, poster_url FROM MOVIE WHERE movie_id=%s", (movie_id,))
-        return cur.fetchone()
-    finally:
-        cur.close()
-        conn.close()
-
-def get_actor_basic(actor_id):
-    conn = connect_db()
-    try:
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT actor_id, name, birthdate, country, profile_url FROM ACTOR WHERE actor_id=%s", (actor_id,))
-        return cur.fetchone()
-    finally:
-        cur.close()
-        conn.close()
 
 def normalize_movie_row(row):
     if not row: return None
