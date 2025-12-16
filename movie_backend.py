@@ -89,10 +89,22 @@ def reset_seen_sets():
 
 def fetch_and_store_movie(movie_id, tmdb_movie_id):
     """從 TMDB 獲取電影資料並存入資料庫"""
-    if movie_id is None or check_movie_detail(movie_id) is False:
+    import time
+    
+    t_check = time.time()
+    needs_fetch = (movie_id is None or check_movie_detail(movie_id) is False)
+    print(f"[PERF-DETAIL]   check_movie_detail({movie_id}): {time.time()-t_check:.3f}s -> needs_fetch={needs_fetch}")
+    
+    if needs_fetch:
         try:
+            t_fetch = time.time()
             movie_data = fetch_tmdb_data(f"/movie/{tmdb_movie_id}", params={"append_to_response": "credits,genres"})
-            return store_movie(tmdb_movie_id, movie_data)
+            print(f"[PERF-DETAIL]   fetch_tmdb_data (TMDB API): {time.time()-t_fetch:.3f}s")
+            
+            t_store = time.time()
+            result = store_movie(tmdb_movie_id, movie_data)
+            print(f"[PERF-DETAIL]   store_movie: {time.time()-t_store:.3f}s")
+            return result
         except Exception as e:
             print(f"Error fetching/storing movie {tmdb_movie_id}: {e}")
             raise
@@ -171,13 +183,32 @@ def get_movies():
 @app.route('/movies/<int:movie_id>', methods=['GET'])
 def get_movie_detail_route(movie_id):
     """獲取電影詳細資訊"""
+    import time
+    t_start = time.time()
+    
+    # 步驟 1: 獲取 tmdb_id
+    t1 = time.time()
     tmdb_id = get_tmdb_id_from_movie_id(movie_id)
+    print(f"[PERF-DETAIL] get_tmdb_id_from_movie_id({movie_id}): {time.time()-t1:.3f}s -> {tmdb_id}")
+    
+    # 步驟 2: 檢查並補充資料
     if tmdb_id is not None:
-        fetch_and_store_movie(movie_id, tmdb_id)
+        t2 = time.time()
+        try:
+            fetch_and_store_movie(movie_id, tmdb_id)
+            print(f"[PERF-DETAIL] fetch_and_store_movie({movie_id}): {time.time()-t2:.3f}s")
+        except Exception as e:
+            print(f"[PERF-DETAIL] fetch_and_store_movie({movie_id}) 錯誤: {e}")
     else:
-        print(f"Warning: Failed to get movie_tmdb_id: {movie_id}")
+        print(f"[PERF-DETAIL] Warning: Failed to get movie_tmdb_id: {movie_id}")
 
+    # 步驟 3: 獲取完整資料
+    t3 = time.time()
     movie = get_movie_detail(movie_id)
+    print(f"[PERF-DETAIL] get_movie_detail({movie_id}): {time.time()-t3:.3f}s")
+    
+    print(f"[PERF-DETAIL] TOTAL /movies/{movie_id}: {time.time()-t_start:.3f}s")
+    
     if not movie:
         return jsonify({'error': 'Movie not found'}), 404
     return jsonify(movie)
