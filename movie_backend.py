@@ -347,11 +347,16 @@ def search_all():
 @app.route('/api/trending/all', methods=['GET'])
 def trending_all():
     """獲取所有 trending 資料"""
+    import time
+    t_start = time.time()
+    
     cache_key = "trending_all"
     cached = cache_get(cache_key)
     if cached:
+        print(f"[PERF-DETAIL] trending_all: cache hit, total={time.time()-t_start:.3f}s")
         return jsonify(cached)
 
+    t_fetch = time.time()
     urls_params = [
         ('/trending/movie/day', {}),
         ('/trending/movie/week', {}),
@@ -359,28 +364,39 @@ def trending_all():
         ('/movie/upcoming', {'region': 'TW'})
     ]
     results = fetch_tmdb_concurrent(urls_params)
+    print(f"[PERF-DETAIL] trending_all: tmdb_fetch={time.time()-t_fetch:.3f}s")
 
     try:
         normalized_blocks = []
-        for block in results:
+        t_process = time.time()
+        for block_idx, block in enumerate(results):
             movie_results = block.get('results', []) if isinstance(block, dict) else []
             movie_tmdb_ids = [m.get('id') for m in movie_results if m.get('id')]
 
             if movie_tmdb_ids:
+                t_get_existing = time.time()
                 existing_map = get_movies_by_tmdb_ids(movie_tmdb_ids)
+                print(f"[PERF-DETAIL]   block{block_idx} get_movies_by_tmdb_ids({len(movie_tmdb_ids)}): {time.time()-t_get_existing:.3f}s")
+                
                 missing = [mid for mid in movie_tmdb_ids if mid not in existing_map]
-                for tmdb_id in missing:
-                    mark_seen_movie(tmdb_id)
-                    m = next((x for x in movie_results if x.get('id') == tmdb_id), None)
-                    if m:
-                        try:
-                            store_movie(tmdb_id, m)
-                        except Exception as e:
-                            print(f"Warning: Failed to store movie {tmdb_id}: {e}")
+                if missing:
+                    print(f"[PERF-DETAIL]   block{block_idx} missing movies: {len(missing)}")
+                    t_store = time.time()
+                    for tmdb_id in missing:
+                        mark_seen_movie(tmdb_id)
+                        m = next((x for x in movie_results if x.get('id') == tmdb_id), None)
+                        if m:
+                            try:
+                                store_movie(tmdb_id, m)
+                            except Exception as e:
+                                print(f"Warning: Failed to store movie {tmdb_id}: {e}")
+                    print(f"[PERF-DETAIL]   block{block_idx} store_missing({len(missing)}): {time.time()-t_store:.3f}s")
 
             movies_data = get_movies_by_tmdb_ids(movie_tmdb_ids) if movie_tmdb_ids else {}
             normalized_movies = [normalize_movie_row(m) for m in movies_data.values()]
             normalized_blocks.append(normalized_movies)
+        
+        print(f"[PERF-DETAIL] trending_all: process={time.time()-t_process:.3f}s")
         
         payload = {
             'day': normalized_blocks[0] if len(normalized_blocks) > 0 else [],
@@ -391,6 +407,10 @@ def trending_all():
 
         cache_set(cache_key, payload)
         reset_seen_sets()
+        
+        t_total = time.time() - t_start
+        print(f"[PERF-DETAIL] trending_all: total={t_total:.3f}s")
+        
         return jsonify(payload)
         
     except Exception as e:
