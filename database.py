@@ -60,8 +60,8 @@ def upsert_actor(cur, tmdb_id, name, profile_url=None):
         INSERT INTO ACTOR (tmdb_id, name, profile_url)
         VALUES (%s,%s,%s)
         ON DUPLICATE KEY UPDATE
-            name=COALESCE(VALUES(name), name),
-            profile_url=COALESCE(VALUES(profile_url), profile_url)
+            name=VALUES(name),
+            profile_url=VALUES(profile_url)
     """, (tmdb_id, name, profile_url))
     cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
