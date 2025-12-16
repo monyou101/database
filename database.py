@@ -8,14 +8,15 @@ TMDB_IMG_BASE_URL = "https://image.tmdb.org/t/p/w500"
 db_pool = None
 
 def _init_pool_connections():
-    """延遲初始化：在後台異步預初始化連線，不阻塞應用啟動
-    避免啟動時的阻塞問題，同時讓首個真實請求使用預初始化的連線
+    """後台非同步初始化連線池
+    在應用啟動後觸發，不阻塞應用啟動
     """
     global db_pool
+    
     def _async_init():
         try:
-            # 在後台非同步建立 2 個連線
-            init_count = min(2, int(os.getenv("MYSQL_POOL_SIZE", 20)))
+            # 在後台非同步建立 3 個連線
+            init_count = min(3, int(os.getenv("MYSQL_POOL_SIZE", 20)))
             for i in range(init_count):
                 try:
                     conn = db_pool.get_connection()
@@ -44,8 +45,7 @@ def init_db_pool():
         port=int(os.getenv("MYSQLPORT", 3306)),
         autocommit=True  # 自動提交，減少往返
     )
-    # 在後台異步預初始化連線
-    _init_pool_connections()
+    # 不進行初始化，由 Flask 應用啟動後手動觸發
 
 def connect_db():
     """從連線池獲取連線"""

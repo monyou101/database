@@ -29,6 +29,8 @@ from database import (
     add_review,
     get_movie_reviews,
     execute_sql_query,
+    init_db_pool,
+    _init_pool_connections,
 )
 from tmdb_api import fetch_tmdb_data
 from perf_test_routes import register_perf_routes
@@ -37,6 +39,20 @@ from perf_monitoring import install_perf_monitoring
 app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
 CORS(app)
 Compress(app)
+
+# 初始化資料庫連線池
+init_db_pool()
+
+# 應用啟動完成後，在後台觸發連線池預初始化
+@app.after_request
+def _trigger_pool_init(response):
+    """在第一個請求後觸發連線池初始化"""
+    global _pool_init_triggered
+    if not hasattr(app, '_pool_init_triggered'):
+        app._pool_init_triggered = True
+        _init_pool_connections()
+        print("[INIT] Pool warm-up triggered in background")
+    return response
 
 # 安裝效能監控
 install_perf_monitoring(app)
