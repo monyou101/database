@@ -31,10 +31,14 @@ from database import (
     execute_sql_query,
 )
 from tmdb_api import fetch_tmdb_data
+from perf_test_routes import register_perf_routes
 
 app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
 CORS(app)
 Compress(app)
+
+# 註冊效能測試端點
+register_perf_routes(app)
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev_secret_key')
 CACHE_TTL_SECONDS = 1800
 _cache = {}
