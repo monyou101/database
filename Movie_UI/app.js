@@ -111,8 +111,8 @@ function showRankRow(results, targetId) {
   box.innerHTML = list
     .map(m => {
       const poster = m.poster_url || "No_image_available.png";
-      const year = m.release_date ? m.release_date.slice(0, 4) : "未知";
-      const rating = m.vote_average ? m.vote_average.toFixed(1) : "N/A";
+      const year = m.release_year || "未知年份";
+      const rating = m.rating ? `${m.rating}` : "N/A";
       return `
         <div class="rank-card" onclick="goMovieDetail(${m.movie_id})">
           <img src="${poster}" class="rank-poster" alt="${m.title}">
