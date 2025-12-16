@@ -5,20 +5,23 @@ from mysql.connector import pooling
 TMDB_IMG_BASE_URL = "https://image.tmdb.org/t/p/w500"
 
 db_pool = None
-_pool_init_lock = None
 
 def _init_pool_connections():
-    """預先初始化所有連線，避免首次請求時建立連線"""
+    """預先初始化少數連線，避免首次請求時建立連線
+    由於每個連線建立需要 ~3 秒，我們只初始化 3 個以加快啟動
+    """
     global db_pool
     try:
-        for _ in range(int(os.getenv("MYSQL_POOL_SIZE", 20))):
+        init_count = min(3, int(os.getenv("MYSQL_POOL_SIZE", 20)))
+        for i in range(init_count):
             try:
                 conn = db_pool.get_connection()
                 conn.close()
-            except:
-                pass
-    except:
-        pass
+                print(f"[INIT] Pool connection {i+1}/{init_count} ready")
+            except Exception as e:
+                print(f"[INIT] Warning: Failed to initialize connection {i+1}: {e}")
+    except Exception as e:
+        print(f"[INIT] Warning: Pool initialization error: {e}")
 
 def init_db_pool():
     """初始化資料庫連線池"""
