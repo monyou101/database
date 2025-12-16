@@ -199,6 +199,12 @@ def get_movies():
 @app.route('/movies/<int:movie_id>', methods=['GET'])
 def get_movie_detail_route(movie_id):
     """獲取電影詳細資訊"""
+    tmdb_id = get_tmdb_id_from_movie_id(movie_id)
+    if tmdb_id is not None:
+        fetch_and_store_movie(movie_id, tmdb_id)
+    else:
+        print(f"Warning: Failed to get movie_tmdb_id: {movie_id}")
+
     movie = get_movie_detail(movie_id)
     if not movie:
         return jsonify({'error': 'Movie not found'}), 404
@@ -217,6 +223,12 @@ def get_actors():
 @app.route('/actors/<int:actor_id>', methods=['GET'])
 def get_actor_detail_route(actor_id):
     """獲取演員詳細資訊"""
+    tmdb_id = get_tmdb_id_from_actor_id(actor_id)
+    if tmdb_id is not None:
+        fetch_and_store_actor(actor_id, tmdb_id)
+    else:
+        print(f"Warning: Failed to get actor_tmdb_id: {actor_id}")
+    
     actor = get_actor_detail(actor_id)
     if not actor:
         return jsonify({'error': 'Actor not found'}), 404
