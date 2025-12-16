@@ -183,16 +183,7 @@ def get_movies():
 @app.route('/movies/<int:movie_id>', methods=['GET'])
 def get_movie_detail_route(movie_id):
     """獲取電影詳細資訊"""
-    import time
-    t_start = time.time()
-    
-    # 直接查詢，不做額外的 tmdb_id 或 check 查詢
-    t1 = time.time()
     movie = get_movie_detail(movie_id)
-    print(f"[PERF-DETAIL] get_movie_detail({movie_id}): {time.time()-t1:.3f}s")
-    
-    print(f"[PERF-DETAIL] TOTAL /movies/{movie_id}: {time.time()-t_start:.3f}s")
-    
     if not movie:
         return jsonify({'error': 'Movie not found'}), 404
     return jsonify(movie)

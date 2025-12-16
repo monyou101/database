@@ -5,20 +5,37 @@ from mysql.connector import pooling
 TMDB_IMG_BASE_URL = "https://image.tmdb.org/t/p/w500"
 
 db_pool = None
+_pool_init_lock = None
+
+def _init_pool_connections():
+    """預先初始化所有連線，避免首次請求時建立連線"""
+    global db_pool
+    try:
+        for _ in range(int(os.getenv("MYSQL_POOL_SIZE", 20))):
+            try:
+                conn = db_pool.get_connection()
+                conn.close()
+            except:
+                pass
+    except:
+        pass
 
 def init_db_pool():
     """初始化資料庫連線池"""
     global db_pool
     db_pool = pooling.MySQLConnectionPool(
         pool_name="mypool",
-        pool_size=int(os.getenv("MYSQL_POOL_SIZE", 5)),
+        pool_size=int(os.getenv("MYSQL_POOL_SIZE", 20)),  # 增加到 20，預先建立連線
         pool_reset_session=True,
         host=os.getenv("MYSQLHOST", "localhost"),
         database=os.getenv("MYSQLDATABASE", "mydb"),
         user=os.getenv("MYSQLUSER", "myuser"),
         password=os.getenv("MYSQLPASSWORD", "myuser"),
-        port=int(os.getenv("MYSQLPORT", 3306))
+        port=int(os.getenv("MYSQLPORT", 3306)),
+        autocommit=True  # 自動提交，減少往返
     )
+    # 預先初始化連線
+    _init_pool_connections()
 
 def connect_db():
     """從連線池獲取連線"""
@@ -462,28 +479,17 @@ def search_movies(query, page=1, limit=20):
     return movies
 
 def get_movie_detail(movie_id):
-    """獲取電影詳細資訊（含演員、導演、評論）- 優化版本減少往返"""
-    import time
-    
-    t0 = time.time()
+    """獲取電影詳細資訊（含演員、導演、評論）"""
     conn = connect_db()
-    print(f"[PERF-DB] connect_db: {time.time()-t0:.3f}s")
-    
     cur = conn.cursor(dictionary=True)
     
-    # 查詢 1: 主電影資訊
-    t1 = time.time()
     cur.execute("SELECT * FROM MOVIE WHERE movie_id = %s", (movie_id,))
     movie = cur.fetchone()
-    print(f"[PERF-DB] SELECT MOVIE: {time.time()-t1:.3f}s")
-    
     if not movie:
         cur.close()
         conn.close()
         return None
     
-    # 查詢 2: 演員
-    t2 = time.time()
     cur.execute("""
         SELECT a.actor_id, a.name, a.birthdate, a.country, a.profile_url, mc.character_name, mc.billing_order
         FROM ACTOR a
@@ -492,10 +498,7 @@ def get_movie_detail(movie_id):
         ORDER BY mc.billing_order
     """, (movie_id,))
     movie['actors'] = cur.fetchall()
-    print(f"[PERF-DB] SELECT ACTORS: {time.time()-t2:.3f}s (found {len(movie['actors'])}）")
     
-    # 查詢 3: 導演
-    t3 = time.time()
     cur.execute("""
         SELECT a.actor_id, a.name, a.birthdate, a.country, a.profile_url
         FROM ACTOR a
@@ -503,10 +506,7 @@ def get_movie_detail(movie_id):
         WHERE d.movie_id = %s
     """, (movie_id,))
     movie['directors'] = cur.fetchall()
-    print(f"[PERF-DB] SELECT DIRECTORS: {time.time()-t3:.3f}s (found {len(movie['directors'])}）")
     
-    # 查詢 4: 評論
-    t4 = time.time()
     cur.execute("""
         SELECT r.review_id, r.rating, r.title, r.body, r.created_at, u.username
         FROM REVIEW r
@@ -515,13 +515,9 @@ def get_movie_detail(movie_id):
         ORDER BY r.created_at DESC
     """, (movie_id,))
     movie['reviews'] = cur.fetchall()
-    print(f"[PERF-DB] SELECT REVIEWS: {time.time()-t4:.3f}s (found {len(movie['reviews'])}）")
     
-    t5 = time.time()
     cur.close()
     conn.close()
-    print(f"[PERF-DB] close connection: {time.time()-t5:.3f}s")
-    
     return movie
 
 # ==================== 演員查詢 ====================
