@@ -8,11 +8,11 @@ db_pool = None
 
 def _init_pool_connections():
     """預先初始化少數連線，避免首次請求時建立連線
-    由於每個連線建立需要 ~3 秒，我們只初始化 3 個以加快啟動
+    由於每個連線建立需要 ~9 秒，我們初始化 5 個以應對初期流量
     """
     global db_pool
     try:
-        init_count = min(3, int(os.getenv("MYSQL_POOL_SIZE", 20)))
+        init_count = min(5, int(os.getenv("MYSQL_POOL_SIZE", 20)))
         for i in range(init_count):
             try:
                 conn = db_pool.get_connection()
