@@ -7,21 +7,12 @@ TMDB_IMG_BASE_URL = "https://image.tmdb.org/t/p/w500"
 db_pool = None
 
 def _init_pool_connections():
-    """預先初始化少數連線，避免首次請求時建立連線
-    由於每個連線建立需要 ~9 秒，我們初始化 5 個以應對初期流量
+    """延遲初始化：不在啟動時初始化，讓第一個請求自動建立連線
+    這避免了啟動時的阻塞問題，同時讓連線池自動管理連線生命週期
     """
-    global db_pool
-    try:
-        init_count = min(5, int(os.getenv("MYSQL_POOL_SIZE", 20)))
-        for i in range(init_count):
-            try:
-                conn = db_pool.get_connection()
-                conn.close()
-                print(f"[INIT] Pool connection {i+1}/{init_count} ready")
-            except Exception as e:
-                print(f"[INIT] Warning: Failed to initialize connection {i+1}: {e}")
-    except Exception as e:
-        print(f"[INIT] Warning: Pool initialization error: {e}")
+    # 已移除預初始化邏輯，讓 MySQL 連線按需建立
+    # 後續請求會重用連線池中的連線
+    pass
 
 def init_db_pool():
     """初始化資料庫連線池"""
@@ -37,8 +28,7 @@ def init_db_pool():
         port=int(os.getenv("MYSQLPORT", 3306)),
         autocommit=True  # 自動提交，減少往返
     )
-    # 預先初始化連線
-    _init_pool_connections()
+    # 不再進行預初始化，讓連線按需建立
 
 def connect_db():
     """從連線池獲取連線"""
