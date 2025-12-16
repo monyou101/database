@@ -4,7 +4,7 @@
 
 import time
 from functools import wraps
-from flask import g
+from flask import g, request
 
 def time_endpoint(f):
     """計時裝飾器"""
