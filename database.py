@@ -29,7 +29,7 @@ def init_db_pool():
     db_pool = pooling.MySQLConnectionPool(
         pool_name="mypool",
         pool_size=int(os.getenv("MYSQL_POOL_SIZE", 20)),  # 增加到 20，預先建立連線
-        pool_reset_session=True,
+        pool_reset_session=False,  # 禁用連線重置，避免預初始化的連線被銷毀
         host=os.getenv("MYSQLHOST", "localhost"),
         database=os.getenv("MYSQLDATABASE", "mydb"),
         user=os.getenv("MYSQLUSER", "myuser"),
