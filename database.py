@@ -125,6 +125,23 @@ def get_movie_id_from_tmdb_id(tmdb_id):
     conn.close()
     return row[0] if row else None
 
+def check_movie_detail(movie_id):
+    if movie_id is not None:
+        conn = connect_db()
+        cur = conn.cursor()
+        cur.execute("SELECT poster_url, runtime FROM MOVIE WHERE movie_id=%s", (movie_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row:
+            if row[0] is None:
+                return True
+            elif row[1] is None:
+                return False
+            else:
+                return True
+    return False
+
 def get_tmdb_id_from_actor_id(actor_id):
     """從 actor_id 獲取 tmdb_id"""
     conn = connect_db()
@@ -210,12 +227,12 @@ def store_movie(tmdb_movie_id, movie_data):
     conn = connect_db()
     cur = conn.cursor()
 
-    movie_id = check_movie(cur, tmdb_movie_id)
-    if movie_id is not None:
-        print(f"Movie with tmdb_id {tmdb_movie_id} already exists, skipping.")
-        cur.close()
-        conn.close()
-        return movie_id
+    # movie_id = check_movie(cur, tmdb_movie_id)
+    # if check_movie_detail(movie_id):
+    #     print(f"Movie with tmdb_id {tmdb_movie_id} already exists, skipping.")
+    #     cur.close()
+    #     conn.close()
+    #     return movie_id
 
     try:
         title = movie_data.get("title")

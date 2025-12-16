@@ -10,6 +10,7 @@ from threading import Lock
 from database import (
     store_movie,
     store_actor,
+    check_movie_detail,
     check_actor_detail,
     get_movie_id_from_tmdb_id,
     get_actor_id_from_tmdb_id,
@@ -80,7 +81,7 @@ def reset_seen_sets():
 def fetch_and_store_movie(tmdb_movie_id):
     """從 TMDB 獲取電影資料並存入資料庫"""
     movie_id = get_movie_id_from_tmdb_id(tmdb_movie_id)
-    if movie_id is None:
+    if movie_id is None or check_movie_detail(movie_id) is False:
         try:
             movie_data = fetch_tmdb_data(f"/movie/{tmdb_movie_id}", params={"append_to_response": "credits,genres"})
             return store_movie(tmdb_movie_id, movie_data)
