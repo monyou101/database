@@ -186,26 +186,10 @@ def get_movie_detail_route(movie_id):
     import time
     t_start = time.time()
     
-    # 步驟 1: 獲取 tmdb_id
+    # 直接查詢，不做額外的 tmdb_id 或 check 查詢
     t1 = time.time()
-    tmdb_id = get_tmdb_id_from_movie_id(movie_id)
-    print(f"[PERF-DETAIL] get_tmdb_id_from_movie_id({movie_id}): {time.time()-t1:.3f}s -> {tmdb_id}")
-    
-    # 步驟 2: 檢查並補充資料
-    if tmdb_id is not None:
-        t2 = time.time()
-        try:
-            fetch_and_store_movie(movie_id, tmdb_id)
-            print(f"[PERF-DETAIL] fetch_and_store_movie({movie_id}): {time.time()-t2:.3f}s")
-        except Exception as e:
-            print(f"[PERF-DETAIL] fetch_and_store_movie({movie_id}) 錯誤: {e}")
-    else:
-        print(f"[PERF-DETAIL] Warning: Failed to get movie_tmdb_id: {movie_id}")
-
-    # 步驟 3: 獲取完整資料
-    t3 = time.time()
     movie = get_movie_detail(movie_id)
-    print(f"[PERF-DETAIL] get_movie_detail({movie_id}): {time.time()-t3:.3f}s")
+    print(f"[PERF-DETAIL] get_movie_detail({movie_id}): {time.time()-t1:.3f}s")
     
     print(f"[PERF-DETAIL] TOTAL /movies/{movie_id}: {time.time()-t_start:.3f}s")
     

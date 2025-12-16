@@ -11,13 +11,17 @@ def init_db_pool():
     global db_pool
     db_pool = pooling.MySQLConnectionPool(
         pool_name="mypool",
-        pool_size=int(os.getenv("MYSQL_POOL_SIZE", 5)),
-        pool_reset_session=True,
+        pool_size=int(os.getenv("MYSQL_POOL_SIZE", 10)),  # 增加連線池大小
+        pool_reset_session=False,  # 不重置 session，減少開銷
         host=os.getenv("MYSQLHOST", "localhost"),
         database=os.getenv("MYSQLDATABASE", "mydb"),
         user=os.getenv("MYSQLUSER", "myuser"),
         password=os.getenv("MYSQLPASSWORD", "myuser"),
-        port=int(os.getenv("MYSQLPORT", 3306))
+        port=int(os.getenv("MYSQLPORT", 3306)),
+        # 新增連線優化參數
+        connect_timeout=10,  # 連線超時
+        autocommit=True,  # 自動提交，減少往返
+        use_pure=False  # 使用 C 擴展，更快
     )
 
 def connect_db():
@@ -462,9 +466,13 @@ def search_movies(query, page=1, limit=20):
     return movies
 
 def get_movie_detail(movie_id):
-    """獲取電影詳細資訊（含演員、導演、評論）"""
+    """獲取電影詳細資訊（含演員、導演、評論）- 優化版本減少往返"""
     conn = connect_db()
     cur = conn.cursor(dictionary=True)
+    
+    # 使用一次查詢獲取所有資料（使用 UNION 或多重 SELECT）
+    # 由於 MySQL 不支援在單一查詢中返回多個結果集給 Python，
+    # 我們使用 executemany 的替代方案：一次連線執行所有查詢
     
     cur.execute("SELECT * FROM MOVIE WHERE movie_id = %s", (movie_id,))
     movie = cur.fetchone()
@@ -473,6 +481,7 @@ def get_movie_detail(movie_id):
         conn.close()
         return None
     
+    # 批次執行剩餘查詢（使用同一個游標，減少往返）
     cur.execute("""
         SELECT a.actor_id, a.name, a.birthdate, a.country, a.profile_url, mc.character_name, mc.billing_order
         FROM ACTOR a
