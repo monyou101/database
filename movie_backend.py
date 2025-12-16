@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_compress import Compress
 import os
@@ -32,10 +32,14 @@ from database import (
 )
 from tmdb_api import fetch_tmdb_data
 from perf_test_routes import register_perf_routes
+from perf_monitoring import install_perf_monitoring
 
 app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
 CORS(app)
 Compress(app)
+
+# 安裝效能監控
+install_perf_monitoring(app)
 
 # 註冊效能測試端點
 register_perf_routes(app)
