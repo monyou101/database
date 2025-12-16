@@ -1,27 +1,31 @@
 # database.py - MySQL 資料庫操作
 import os
-import mysql.connector
+from mysql.connector import pooling
 
 TMDB_IMG_BASE_URL = "https://image.tmdb.org/t/p/w500"
 
+db_pool = None
+
+def init_db_pool():
+    """初始化資料庫連線池"""
+    global db_pool
+    db_pool = pooling.MySQLConnectionPool(
+        pool_name="mypool",
+        pool_size=5,
+        pool_reset_session=True,
+        host=os.getenv("MYSQLHOST", "localhost"),
+        database=os.getenv("MYSQLDATABASE", "mydb"),
+        user=os.getenv("MYSQLUSER", "myuser"),
+        password=os.getenv("MYSQLPASSWORD", "myuser"),
+        port=int(os.getenv("MYSQLPORT", 3306))
+    )
+
 def connect_db():
-    """建立資料庫連線"""
-    mysql_url = os.getenv("MYSQL_URL")
-    if mysql_url:
-        return mysql.connector.connect(
-            host=os.getenv("MYSQLHOST"),
-            database=os.getenv("MYSQLDATABASE"),
-            user=os.getenv("MYSQLUSER"),
-            password=os.getenv("MYSQLPASSWORD"),
-            port=os.getenv("MYSQLPORT", 3306)
-        )
-    else:
-        return mysql.connector.connect(
-            host=os.getenv("DB_HOST", "localhost"),
-            user=os.getenv("DB_USER", "myuser"),
-            password=os.getenv("DB_PASS", "myuser"),
-            database=os.getenv("DB_NAME", "mydb")
-        )
+    """從連線池獲取連線"""
+    global db_pool
+    if db_pool is None:
+        init_db_pool()
+    return db_pool.get_connection()
 
 # ==================== 內部工具函數 ====================
 
@@ -160,21 +164,23 @@ def check_actor_detail(actor_id):
 
 def get_movie_basic(movie_id):
     conn = connect_db()
-    cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT movie_id, title, release_year, genre, rating, poster_url FROM MOVIE WHERE movie_id=%s", (movie_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row if row else None
+    try:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT movie_id, title, release_year, genre, rating, poster_url FROM MOVIE WHERE movie_id=%s", (movie_id,))
+        return cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
 
 def get_actor_basic(actor_id):
     conn = connect_db()
-    cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT actor_id, name, birthdate, country, profile_url FROM ACTOR WHERE actor_id=%s", (actor_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row if row else None
+    try:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT actor_id, name, birthdate, country, profile_url FROM ACTOR WHERE actor_id=%s", (actor_id,))
+        return cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
 
 def normalize_movie_row(row):
     if not row: return None
