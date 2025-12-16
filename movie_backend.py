@@ -281,25 +281,31 @@ def search_all():
     try:
         movie_tmdb_ids = [m.get('id') for m in movie_block.get('results', []) if m.get('id') and not is_seen_movie(m.get('id'))]
         actor_tmdb_ids = [p.get('id') for p in person_block.get('results', []) if p.get('id') and not is_seen_person(p.get('id'))]
-        
-        for tmdb_id, m in [(mid, next((x for x in movie_block.get('results', []) if x.get('id') == mid), None)) for mid in movie_tmdb_ids]:
-            if get_movie_id_from_tmdb_id(tmdb_id) is None:
+
+        if movie_tmdb_ids:
+            existing_movie_map = get_movies_by_tmdb_ids(movie_tmdb_ids)
+            missing_movie_ids = [mid for mid in movie_tmdb_ids if mid not in existing_movie_map]
+            for tmdb_id in missing_movie_ids:
+                m = next((x for x in movie_block.get('results', []) if x.get('id') == tmdb_id), None)
                 if m:
                     try:
                         store_movie(tmdb_id, m)
-                        mark_seen_movie(tmdb_id)
                     except Exception as e:
                         print(f"Warning: Failed to store movie {tmdb_id}: {e}")
-        
-        for tmdb_id, p in [(pid, next((x for x in person_block.get('results', []) if x.get('id') == pid), None)) for pid in actor_tmdb_ids]:
-            if get_actor_id_from_tmdb_id(tmdb_id) is None:
+                mark_seen_movie(tmdb_id)
+
+        if actor_tmdb_ids:
+            existing_actor_map = get_actors_by_tmdb_ids(actor_tmdb_ids)
+            missing_actor_ids = [aid for aid in actor_tmdb_ids if aid not in existing_actor_map]
+            for tmdb_id in missing_actor_ids:
+                p = next((x for x in person_block.get('results', []) if x.get('id') == tmdb_id), None)
                 if p:
                     try:
                         store_actor(tmdb_id, p)
-                        mark_seen_person(tmdb_id)
                     except Exception as e:
                         print(f"Warning: Failed to store actor {tmdb_id}: {e}")
-        
+                mark_seen_person(tmdb_id)
+
         movie_map = get_movies_by_tmdb_ids([m.get('id') for m in movie_block.get('results', []) if m.get('id')])
         actor_map = get_actors_by_tmdb_ids([p.get('id') for p in person_block.get('results', []) if p.get('id')])
         
@@ -336,17 +342,19 @@ def trending_all():
             movie_results = block.get('results', []) if isinstance(block, dict) else []
             movie_tmdb_ids = [m.get('id') for m in movie_results if m.get('id')]
 
-            for tmdb_id, m in zip(movie_tmdb_ids, movie_results):
-                if not is_seen_movie(tmdb_id):
+            if movie_tmdb_ids:
+                existing_map = get_movies_by_tmdb_ids(movie_tmdb_ids)
+                missing = [mid for mid in movie_tmdb_ids if mid not in existing_map]
+                for tmdb_id in missing:
                     mark_seen_movie(tmdb_id)
-                    if get_movie_id_from_tmdb_id(tmdb_id) is None:
-                        if m:
-                            try:
-                                store_movie(tmdb_id, m)
-                            except Exception as e:
-                                print(f"Warning: Failed to store movie {tmdb_id}: {e}")
-        
-            movies_data = get_movies_by_tmdb_ids(movie_tmdb_ids)
+                    m = next((x for x in movie_results if x.get('id') == tmdb_id), None)
+                    if m:
+                        try:
+                            store_movie(tmdb_id, m)
+                        except Exception as e:
+                            print(f"Warning: Failed to store movie {tmdb_id}: {e}")
+
+            movies_data = get_movies_by_tmdb_ids(movie_tmdb_ids) if movie_tmdb_ids else {}
             normalized_movies = [normalize_movie_row(m) for m in movies_data.values()]
             normalized_blocks.append(normalized_movies)
         

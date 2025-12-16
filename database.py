@@ -11,7 +11,7 @@ def init_db_pool():
     global db_pool
     db_pool = pooling.MySQLConnectionPool(
         pool_name="mypool",
-        pool_size=5,
+        pool_size=int(os.getenv("MYSQL_POOL_SIZE", 5)),
         pool_reset_session=True,
         host=os.getenv("MYSQLHOST", "localhost"),
         database=os.getenv("MYSQLDATABASE", "mydb"),
@@ -35,10 +35,12 @@ def check_movie(cur, tmdb_id):
     return row[0] if row else None
 
 def upsert_movie(cur, tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url=None):
-    cur.execute("""
+    cur.execute(
+        """
         INSERT INTO MOVIE (tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE
+          movie_id=LAST_INSERT_ID(movie_id),
           title=COALESCE(VALUES(title), title),
           release_year=COALESCE(VALUES(release_year), release_year),
           genre=COALESCE(VALUES(genre), genre),
@@ -46,13 +48,10 @@ def upsert_movie(cur, tmdb_id, title, release_year, genre, runtime, overview, ra
           overview=COALESCE(VALUES(overview), overview),
           rating=COALESCE(VALUES(rating), rating),
           poster_url=COALESCE(VALUES(poster_url), poster_url)
-    """, (tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url))
-    cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id=%s", (tmdb_id,))
-    row = cur.fetchone()
-    if row is None:
-        raise RuntimeError(f"Failed to fetch movie_id for tmdb_id={tmdb_id}")
-    print(f"Stored movie {title} (movie_id={row[0]})")
-    return row[0]
+        """,
+        (tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url),
+    )
+    return cur.lastrowid
 
 def check_actor(cur, tmdb_id):
     cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
@@ -60,36 +59,34 @@ def check_actor(cur, tmdb_id):
     return row[0] if row else None
 
 def upsert_actor(cur, tmdb_id, name, profile_url=None):
-    cur.execute("""
+    cur.execute(
+        """
         INSERT INTO ACTOR (tmdb_id, name, profile_url)
         VALUES (%s,%s,%s)
         ON DUPLICATE KEY UPDATE
+            actor_id=LAST_INSERT_ID(actor_id),
             name=VALUES(name),
             profile_url=VALUES(profile_url)
-    """, (tmdb_id, name, profile_url))
-    cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
-    row = cur.fetchone()
-    if row is None:
-        raise RuntimeError(f"Failed to fetch actor_id for tmdb_id={tmdb_id}")
-    print(f"Stored actor {name} (actor_id={row[0]})")
-    return row[0]
+    """,
+        (tmdb_id, name, profile_url),
+    )
+    return cur.lastrowid
 
 def upsert_actor_detail(cur, tmdb_id, name, profile_url=None, birthdate=None, country=None):
-    cur.execute("""
+    cur.execute(
+        """
         INSERT INTO ACTOR (tmdb_id, name, profile_url, birthdate, country)
         VALUES (%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE
+            actor_id=LAST_INSERT_ID(actor_id),
             name=COALESCE(VALUES(name), name),
             profile_url=COALESCE(VALUES(profile_url), profile_url),
             birthdate=COALESCE(VALUES(birthdate), birthdate),
             country=COALESCE(VALUES(country), country)
-    """, (tmdb_id, name, profile_url, birthdate, country))
-    cur.execute("SELECT actor_id FROM ACTOR WHERE tmdb_id=%s", (tmdb_id,))
-    row = cur.fetchone()
-    if row is None:
-        raise RuntimeError(f"Failed to fetch actor_id for tmdb_id={tmdb_id}")
-    print(f"Stored actor detail {name} (actor_id={row[0]})")
-    return row[0]
+    """,
+        (tmdb_id, name, profile_url, birthdate, country),
+    )
+    return cur.lastrowid
 
 def ensure_movie_cast(cur, movie_id, actor_id, character_name, billing_order):
     cur.execute("""
@@ -273,29 +270,95 @@ def store_movie(tmdb_movie_id, movie_data):
         movie_id = upsert_movie(cur, tmdb_movie_id, title, release_year, genres, runtime, overview, rating, poster_url)
 
         credits = movie_data.get("credits", {})
-        
-        for member in credits.get("cast", [])[:20]:
-            actor_tmdb_id = member.get("id")
-            actor_id = check_actor(cur, actor_tmdb_id)
-            if actor_id is None:
-                actor_name = member.get("name")
-                profile_path = member.get("profile_path")
-                profile_url = f"{TMDB_IMG_BASE_URL}{profile_path}" if profile_path else None
-                actor_id = upsert_actor(cur, actor_tmdb_id, actor_name, profile_url)
-            character = member.get("character")
-            order = member.get("order")
-            ensure_movie_cast(cur, movie_id, actor_id, character, order)
 
-        for member in credits.get("crew", [])[:20]:
-            if member.get("job") == "Director":
-                director_tmdb_id = member.get("id")
-                director_actor_id = check_actor(cur, director_tmdb_id)
-                if director_actor_id is None:
-                    director_name = member.get("name")
-                    profile_path = member.get("profile_path")
-                    profile_url = f"{TMDB_IMG_BASE_URL}{profile_path}" if profile_path else None
-                    director_actor_id = upsert_actor(cur, director_tmdb_id, director_name, profile_url)
-                ensure_director(cur, movie_id, director_actor_id)
+        cast_members = credits.get("cast", [])[:20]
+        crew_members = credits.get("crew", [])[:20]
+
+        tmdb_to_basic = {}
+        for m in cast_members:
+            tid = m.get("id")
+            if tid:
+                pp = m.get("profile_path")
+                tmdb_to_basic[tid] = (
+                    m.get("name"),
+                    f"{TMDB_IMG_BASE_URL}{pp}" if pp else None,
+                )
+        director_ids = []
+        for m in crew_members:
+            if m.get("job") == "Director":
+                tid = m.get("id")
+                if tid:
+                    director_ids.append(tid)
+                    if tid not in tmdb_to_basic:
+                        pp = m.get("profile_path")
+                        tmdb_to_basic[tid] = (
+                            m.get("name"),
+                            f"{TMDB_IMG_BASE_URL}{pp}" if pp else None,
+                        )
+
+        all_tmdb_ids = list(tmdb_to_basic.keys())
+        actor_id_map = {}
+        if all_tmdb_ids:
+            placeholders = ",".join(["%s"] * len(all_tmdb_ids))
+            cur.execute(
+                f"SELECT tmdb_id, actor_id FROM ACTOR WHERE tmdb_id IN ({placeholders})",
+                all_tmdb_ids,
+            )
+            for tid, aid in cur.fetchall() or []:
+                actor_id_map[tid] = aid
+
+            missing = [tid for tid in all_tmdb_ids if tid not in actor_id_map]
+            if missing:
+                values = [(tid, tmdb_to_basic[tid][0], tmdb_to_basic[tid][1]) for tid in missing]
+                cur.executemany(
+                    """
+                    INSERT INTO ACTOR (tmdb_id, name, profile_url)
+                    VALUES (%s,%s,%s)
+                    ON DUPLICATE KEY UPDATE
+                        name=VALUES(name),
+                        profile_url=VALUES(profile_url)
+                    """,
+                    values,
+                )
+                cur.execute(
+                    f"SELECT tmdb_id, actor_id FROM ACTOR WHERE tmdb_id IN ({placeholders})",
+                    all_tmdb_ids,
+                )
+                for tid, aid in cur.fetchall() or []:
+                    actor_id_map[tid] = aid
+
+        if cast_members and actor_id_map:
+            cast_rows = []
+            for m in cast_members:
+                tid = m.get("id")
+                aid = actor_id_map.get(tid)
+                if aid:
+                    cast_rows.append(
+                        (movie_id, aid, m.get("character"), m.get("order"))
+                    )
+            if cast_rows:
+                cur.executemany(
+                    """
+                    INSERT IGNORE INTO MOVIE_CAST (movie_id, actor_id, character_name, billing_order)
+                    VALUES (%s,%s,%s,%s)
+                    """,
+                    cast_rows,
+                )
+
+        if director_ids and actor_id_map:
+            dir_rows = []
+            for tid in director_ids:
+                aid = actor_id_map.get(tid)
+                if aid:
+                    dir_rows.append((movie_id, aid))
+            if dir_rows:
+                cur.executemany(
+                    """
+                    INSERT IGNORE INTO DIRECTOR (movie_id, actor_id)
+                    VALUES (%s,%s)
+                    """,
+                    dir_rows,
+                )
 
         conn.commit()
         return movie_id
@@ -375,14 +438,23 @@ def search_movies(query, page=1, limit=20):
     conn = connect_db()
     cur = conn.cursor(dictionary=True)
     
-    sql = """
-        SELECT movie_id, title, release_year, genre, rating, poster_url
-        FROM MOVIE
-        WHERE title LIKE %s
-        ORDER BY created_at DESC
-        LIMIT %s OFFSET %s
-    """
-    cur.execute(sql, (f'%{query}%', limit, offset))
+    if query:
+        sql = """
+            SELECT movie_id, title, release_year, genre, rating, poster_url
+            FROM MOVIE
+            WHERE title LIKE %s
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+        """
+        cur.execute(sql, (f'%{query}%', limit, offset))
+    else:
+        sql = """
+            SELECT movie_id, title, release_year, genre, rating, poster_url
+            FROM MOVIE
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+        """
+        cur.execute(sql, (limit, offset))
     movies = cur.fetchall()
     
     cur.close()
@@ -439,14 +511,23 @@ def search_actors(query, page=1, limit=20):
     conn = connect_db()
     cur = conn.cursor(dictionary=True)
     
-    sql = """
-        SELECT actor_id, name, birthdate, country, profile_url
-        FROM ACTOR
-        WHERE name LIKE %s
-        ORDER BY name
-        LIMIT %s OFFSET %s
-    """
-    cur.execute(sql, (f'%{query}%', limit, offset))
+    if query:
+        sql = """
+            SELECT actor_id, name, birthdate, country, profile_url
+            FROM ACTOR
+            WHERE name LIKE %s
+            ORDER BY name
+            LIMIT %s OFFSET %s
+        """
+        cur.execute(sql, (f'%{query}%', limit, offset))
+    else:
+        sql = """
+            SELECT actor_id, name, birthdate, country, profile_url
+            FROM ACTOR
+            ORDER BY name
+            LIMIT %s OFFSET %s
+        """
+        cur.execute(sql, (limit, offset))
     actors = cur.fetchall()
     
     cur.close()

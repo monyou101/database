@@ -1,6 +1,8 @@
 # tmdb_api.py - TMDB API 操作
 import os
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 if not TMDB_API_KEY:
@@ -9,11 +11,22 @@ if not TMDB_API_KEY:
     )
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 
+_session = requests.Session()
+_retries = Retry(
+    total=3,
+    backoff_factor=0.5,
+    status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=("GET",),
+)
+_adapter = HTTPAdapter(max_retries=_retries, pool_connections=10, pool_maxsize=20)
+_session.mount("https://", _adapter)
+_session.mount("http://", _adapter)
+
 def fetch_tmdb_data(url, params=None):
     request_params = {"api_key": TMDB_API_KEY, "language": "zh-TW"}
     if params:
         request_params.update(params)
-    response = requests.get(f"{TMDB_BASE_URL}{url}", params=request_params, timeout=10)
+    response = _session.get(f"{TMDB_BASE_URL}{url}", params=request_params, timeout=(3, 10))
     try:
         response.raise_for_status()
     except requests.exceptions.HTTPError as e:

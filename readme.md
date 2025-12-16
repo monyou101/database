@@ -114,6 +114,7 @@
    - 建立 `.env` 檔案（或直接設定）：
      ````
      TMDB_API_KEY=your_tmdb_api_key_here
+       MYSQL_POOL_SIZE=5
      DB_HOST=localhost
      DB_USER=myuser
      DB_PASS=myuser
