@@ -1,5 +1,6 @@
 # database.py - MySQL 資料庫操作
 import os
+import threading
 from mysql.connector import pooling
 
 TMDB_IMG_BASE_URL = "https://image.tmdb.org/t/p/w500"
@@ -7,12 +8,27 @@ TMDB_IMG_BASE_URL = "https://image.tmdb.org/t/p/w500"
 db_pool = None
 
 def _init_pool_connections():
-    """延遲初始化：不在啟動時初始化，讓第一個請求自動建立連線
-    這避免了啟動時的阻塞問題，同時讓連線池自動管理連線生命週期
+    """延遲初始化：在後台異步預初始化連線，不阻塞應用啟動
+    避免啟動時的阻塞問題，同時讓首個真實請求使用預初始化的連線
     """
-    # 已移除預初始化邏輯，讓 MySQL 連線按需建立
-    # 後續請求會重用連線池中的連線
-    pass
+    global db_pool
+    def _async_init():
+        try:
+            # 在後台非同步建立 2 個連線
+            init_count = min(2, int(os.getenv("MYSQL_POOL_SIZE", 20)))
+            for i in range(init_count):
+                try:
+                    conn = db_pool.get_connection()
+                    conn.close()
+                    print(f"[INIT] Pool connection {i+1}/{init_count} ready")
+                except Exception as e:
+                    print(f"[INIT] Warning: Failed to initialize connection {i+1}: {e}")
+        except Exception as e:
+            print(f"[INIT] Warning: Async pool initialization error: {e}")
+    
+    # 在後台執行，不阻塞主線程
+    thread = threading.Thread(target=_async_init, daemon=True)
+    thread.start()
 
 def init_db_pool():
     """初始化資料庫連線池"""
@@ -28,7 +44,8 @@ def init_db_pool():
         port=int(os.getenv("MYSQLPORT", 3306)),
         autocommit=True  # 自動提交，減少往返
     )
-    # 不再進行預初始化，讓連線按需建立
+    # 在後台異步預初始化連線
+    _init_pool_connections()
 
 def connect_db():
     """從連線池獲取連線"""
