@@ -368,6 +368,7 @@ def trending_all():
 
     try:
         # 第一階段：收集所有 tmdb_ids 並一次性查詢
+        t_process = time.time()
         t_collect = time.time()
         all_blocks_tmdb_ids = []
         for block in results:
