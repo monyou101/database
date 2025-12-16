@@ -5,10 +5,9 @@ import mysql.connector
 TMDB_IMG_BASE_URL = "https://image.tmdb.org/t/p/w500"
 
 def connect_db():
-    # 使用 Railway 的 MYSQL_URL 或個別變數
-    mysql_url = os.getenv("MYSQL_URL")  # e.g., mysql://user:pass@host:port/db
+    """建立資料庫連線"""
+    mysql_url = os.getenv("MYSQL_URL")
     if mysql_url:
-        # 解析 URL（或用 mysql.connector 直接解析）
         return mysql.connector.connect(
             host=os.getenv("MYSQLHOST"),
             database=os.getenv("MYSQLDATABASE"),
@@ -17,7 +16,6 @@ def connect_db():
             port=os.getenv("MYSQLPORT", 3306)
         )
     else:
-        # 備用：個別變數
         return mysql.connector.connect(
             host=os.getenv("DB_HOST", "localhost"),
             user=os.getenv("DB_USER", "myuser"),
@@ -26,12 +24,9 @@ def connect_db():
         )
 
 def check_movie(cur, tmdb_id):
-    # 先檢查是否存在，避免重複插入時消耗 AUTO_INCREMENT
     cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id=%s", (tmdb_id,))
     row = cur.fetchone()
-    if row:
-        return row[0]  # 已存在，直接回傳 movie_id
-    return None  # 明確返回 None 若不存在
+    return row[0] if row else None
 
 def upsert_movie(cur, tmdb_id, title, release_year, genre, runtime, overview, rating, poster_url=None):
     cur.execute("""
@@ -155,34 +150,55 @@ def ensure_director(cur, movie_id, actor_id):
         VALUES (%s,%s)
     """, (movie_id, actor_id))
 
-def fetch_and_store_movie(tmdb_movie_id):
-    from tmdb_api import fetch_tmdb_data
+def store_movie(tmdb_movie_id, movie_data):
+    """
+    將 TMDB 電影資料存入資料庫（由外部傳入已解析資料）
+    
+    Args:
+        tmdb_movie_id: TMDB 電影 ID
+        movie_data: dict，包含以下欄位：
+            - title: 電影標題
+            - release_date: 發行日期（YYYY-MM-DD）
+            - genres: list of dict，每個 dict 有 'name' 欄位
+            - runtime: 片長（分鐘）
+            - overview: 簡介
+            - vote_average: 評分
+            - poster_path: 海報路徑
+            - credits: dict，包含 'cast' 和 'crew' 陣列
+    
+    Returns:
+        movie_id: 資料庫中的電影 ID
+    """
     conn = connect_db()
     cur = conn.cursor()
 
     if check_movie(cur, tmdb_movie_id):
         print(f"Movie with tmdb_id {tmdb_movie_id} already exists, skipping.")
+        movie_id = get_movie_id_from_tmdb_id(tmdb_movie_id)
         cur.close()
         conn.close()
-        return
-
-    data = fetch_tmdb_data(f"/movie/{tmdb_movie_id}", params={"append_to_response":"credits,genres"})
-    title = data.get("title")
-    release_year = None
-    if data.get("release_date"):
-        release_year = data["release_date"].split("-")[0]
-    genres = ", ".join([g["name"] for g in data.get("genres", [])]) if data.get("genres") else None
-    runtime = data.get("runtime")
-    overview = data.get("overview")
-    rating = data.get("vote_average")
-    poster_path = data.get("poster_path")
-    poster_url = f"{TMDB_IMG_BASE_URL}{poster_path}" if poster_path else None
+        return movie_id
 
     try:
+        # 解析電影基本資訊
+        title = movie_data.get("title")
+        release_year = None
+        if movie_data.get("release_date"):
+            release_year = movie_data["release_date"].split("-")[0]
+        genres = ", ".join([g["name"] for g in movie_data.get("genres", [])]) if movie_data.get("genres") else None
+        runtime = movie_data.get("runtime")
+        overview = movie_data.get("overview")
+        rating = movie_data.get("vote_average")
+        poster_path = movie_data.get("poster_path")
+        poster_url = f"{TMDB_IMG_BASE_URL}{poster_path}" if poster_path else None
+
+        # 儲存電影
         movie_id = upsert_movie(cur, tmdb_movie_id, title, release_year, genres, runtime, overview, rating, poster_url)
 
-        credits = data.get("credits", {})
-        # actors (cast)
+        # 處理演員和導演
+        credits = movie_data.get("credits", {})
+        
+        # 演員 (cast)
         for member in credits.get("cast", []):
             actor_tmdb_id = member.get("id")
             actor_id = check_actor(cur, actor_tmdb_id)
@@ -195,7 +211,7 @@ def fetch_and_store_movie(tmdb_movie_id):
             order = member.get("order")
             ensure_movie_cast(cur, movie_id, actor_id, character, order)
 
-        # crew -> director
+        # 導演 (crew)
         for member in credits.get("crew", []):
             if member.get("job") == "Director":
                 director_tmdb_id = member.get("id")
@@ -208,6 +224,8 @@ def fetch_and_store_movie(tmdb_movie_id):
                 ensure_director(cur, movie_id, director_actor_id)
 
         conn.commit()
+        return movie_id
+        
     except Exception:
         conn.rollback()
         raise
@@ -215,8 +233,21 @@ def fetch_and_store_movie(tmdb_movie_id):
         cur.close()
         conn.close()
 
-def fetch_and_store_actor(tmdb_actor_id):
-    from tmdb_api import fetch_tmdb_data
+def store_actor(tmdb_actor_id, actor_data):
+    """
+    將 TMDB 演員資料存入資料庫（由外部傳入已解析資料）
+    
+    Args:
+        tmdb_actor_id: TMDB 演員 ID
+        actor_data: dict，包含以下欄位：
+            - name: 演員姓名
+            - profile_path: 頭像路徑
+            - birthday: 生日（YYYY-MM-DD）
+            - place_of_birth: 出生地
+    
+    Returns:
+        actor_id: 資料庫中的演員 ID
+    """
     conn = connect_db()
     cur = conn.cursor()
 
@@ -225,19 +256,23 @@ def fetch_and_store_actor(tmdb_actor_id):
         print(f"Actor with tmdb_id {tmdb_actor_id} already exists, skipping.")
         cur.close()
         conn.close()
-        return
+        return actor_id
 
     try:
-        data = fetch_tmdb_data(f"/person/{tmdb_actor_id}")
-        name = data.get("name")
-        profile_path = data.get("profile_path")
+        # 解析演員資訊
+        name = actor_data.get("name")
+        profile_path = actor_data.get("profile_path")
         profile_url = f"{TMDB_IMG_BASE_URL}{profile_path}" if profile_path else None
-        birthdate = data.get("birthday")  # 格式如 "1974-10-28"
-        country = data.get("place_of_birth")  # 字串，如 "Los Angeles, California, USA"
-        upsert_actor_detail(cur, tmdb_actor_id, name, profile_url, birthdate, country)
-        print("Note: Only basic actor information has been stored. No movie associations have been made." \
-        " To associate this actor with movies, please use the appropriate functionality separately.")
+        birthdate = actor_data.get("birthday")  # 格式如 "1974-10-28"
+        country = actor_data.get("place_of_birth")  # 字串，如 "Los Angeles, California, USA"
+        
+        # 儲存演員詳細資訊
+        actor_id = upsert_actor_detail(cur, tmdb_actor_id, name, profile_url, birthdate, country)
+        print("Note: Only basic actor information has been stored. No movie associations have been made.")
+        
         conn.commit()
+        return actor_id
+        
     except Exception:
         conn.rollback()
         raise
@@ -253,23 +288,6 @@ def get_actor_basic(cur, actor_id):
     cur.execute("SELECT actor_id, name, birthdate, country, profile_url FROM ACTOR WHERE actor_id=%s", (actor_id,))
     return cur.fetchone()
 
-def ensure_movie_by_tmdb(tmdb_movie_id):
-    """確保電影存在於 DB，若不存在則抓 TMDB 並入庫；回傳 movie_id"""
-    movie_id = get_movie_id_from_tmdb_id(tmdb_movie_id)
-    if movie_id:
-        return movie_id
-    fetch_and_store_movie(tmdb_movie_id)
-    return get_movie_id_from_tmdb_id(tmdb_movie_id)
-
-def ensure_actor_by_tmdb(tmdb_actor_id):
-    """確保演員存在於 DB，若不存在則抓 TMDB 並入庫；回傳 actor_id"""
-    actor_id = get_actor_id_from_tmdb_id(tmdb_actor_id)
-    if actor_id:
-        return actor_id
-    fetch_and_store_actor(tmdb_actor_id)
-    return get_actor_id_from_tmdb_id(tmdb_actor_id)
-
-# 提供標準化輸出物件（前端不再用 tmdb_id）
 def normalize_movie_row(row):
     if not row: return None
     return {
