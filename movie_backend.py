@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_compress import Compress
 import os
@@ -12,10 +12,8 @@ from database import (
     store_actor,
     check_movie_detail,
     check_actor_detail,
-    get_movie_id_from_tmdb_id,
     get_movies_by_tmdb_ids,
     get_tmdb_id_from_movie_id,
-    get_actor_id_from_tmdb_id,
     get_actors_by_tmdb_ids,
     get_tmdb_id_from_actor_id,
     normalize_movie_row,
@@ -33,8 +31,6 @@ from database import (
     _init_pool_connections,
 )
 from tmdb_api import fetch_tmdb_data
-from perf_test_routes import register_perf_routes
-from perf_monitoring import install_perf_monitoring
 
 app = Flask(__name__, static_folder='Movie_UI', static_url_path='')
 CORS(app)
@@ -54,11 +50,6 @@ def _trigger_pool_init(response):
         print("[INIT] Pool warm-up triggered in background")
     return response
 
-# 安裝效能監控
-install_perf_monitoring(app)
-
-# 註冊效能測試端點
-register_perf_routes(app)
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev_secret_key')
 CACHE_TTL_SECONDS = 1800
 _cache = {}
@@ -105,22 +96,10 @@ def reset_seen_sets():
 
 def fetch_and_store_movie(movie_id, tmdb_movie_id):
     """從 TMDB 獲取電影資料並存入資料庫"""
-    import time
-    
-    t_check = time.time()
-    needs_fetch = (movie_id is None or check_movie_detail(movie_id) is False)
-    print(f"[PERF-DETAIL]   check_movie_detail({movie_id}): {time.time()-t_check:.3f}s -> needs_fetch={needs_fetch}")
-    
-    if needs_fetch:
+    if movie_id is None or check_movie_detail(movie_id) is False:
         try:
-            t_fetch = time.time()
             movie_data = fetch_tmdb_data(f"/movie/{tmdb_movie_id}", params={"append_to_response": "credits,genres"})
-            print(f"[PERF-DETAIL]   fetch_tmdb_data (TMDB API): {time.time()-t_fetch:.3f}s")
-            
-            t_store = time.time()
-            result = store_movie(tmdb_movie_id, movie_data)
-            print(f"[PERF-DETAIL]   store_movie: {time.time()-t_store:.3f}s")
-            return result
+            return store_movie(tmdb_movie_id, movie_data)
         except Exception as e:
             print(f"Error fetching/storing movie {tmdb_movie_id}: {e}")
             raise
@@ -359,16 +338,11 @@ def search_all():
 @app.route('/api/trending/all', methods=['GET'])
 def trending_all():
     """獲取所有 trending 資料"""
-    import time
-    t_start = time.time()
-    
     cache_key = "trending_all"
     cached = cache_get(cache_key)
     if cached:
-        print(f"[PERF-DETAIL] trending_all: cache hit, total={time.time()-t_start:.3f}s")
         return jsonify(cached)
 
-    t_fetch = time.time()
     urls_params = [
         ('/trending/movie/day', {}),
         ('/trending/movie/week', {}),
@@ -376,31 +350,19 @@ def trending_all():
         ('/movie/upcoming', {'region': 'TW'})
     ]
     results = fetch_tmdb_concurrent(urls_params)
-    print(f"[PERF-DETAIL] trending_all: tmdb_fetch={time.time()-t_fetch:.3f}s")
 
     try:
-        # 第一階段：收集所有 tmdb_ids 並一次性查詢
-        t_process = time.time()
-        t_collect = time.time()
         all_blocks_tmdb_ids = []
         for block in results:
             movie_results = block.get('results', []) if isinstance(block, dict) else []
             movie_tmdb_ids = [m.get('id') for m in movie_results if m.get('id')]
             all_blocks_tmdb_ids.append(movie_tmdb_ids)
-        
-        # 合併所有 tmdb_ids 並一次查詢
+
         all_unique_tmdb_ids = list(set([tid for block_ids in all_blocks_tmdb_ids for tid in block_ids]))
-        print(f"[PERF-DETAIL] trending_all: collect={time.time()-t_collect:.3f}s, total_movies={len(all_unique_tmdb_ids)}")
-        
-        t_query_all = time.time()
         all_movies_map = get_movies_by_tmdb_ids(all_unique_tmdb_ids) if all_unique_tmdb_ids else {}
-        print(f"[PERF-DETAIL] trending_all: get_all_movies({len(all_unique_tmdb_ids)}): {time.time()-t_query_all:.3f}s")
         
-        # 第二階段：處理缺失的電影
-        t_store = time.time()
         missing = [mid for mid in all_unique_tmdb_ids if mid not in all_movies_map]
         if missing:
-            print(f"[PERF-DETAIL] trending_all: missing movies: {len(missing)}")
             for block_idx, block in enumerate(results):
                 movie_results = block.get('results', []) if isinstance(block, dict) else []
                 for tmdb_id in missing:
@@ -412,15 +374,11 @@ def trending_all():
                                 store_movie(tmdb_id, m)
                             except Exception as e:
                                 print(f"Warning: Failed to store movie {tmdb_id}: {e}")
-            print(f"[PERF-DETAIL] trending_all: store_missing({len(missing)}): {time.time()-t_store:.3f}s")
-        
-        # 第三階段：組裝結果
+
         normalized_blocks = []
         for movie_tmdb_ids in all_blocks_tmdb_ids:
             normalized_movies = [normalize_movie_row(all_movies_map[tid]) for tid in movie_tmdb_ids if tid in all_movies_map]
             normalized_blocks.append(normalized_movies)
-        
-        print(f"[PERF-DETAIL] trending_all: process={time.time()-t_process:.3f}s")
         
         payload = {
             'day': normalized_blocks[0] if len(normalized_blocks) > 0 else [],
@@ -431,10 +389,6 @@ def trending_all():
 
         cache_set(cache_key, payload)
         reset_seen_sets()
-        
-        t_total = time.time() - t_start
-        print(f"[PERF-DETAIL] trending_all: total={t_total:.3f}s")
-        
         return jsonify(payload)
         
     except Exception as e:
