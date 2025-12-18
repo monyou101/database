@@ -160,15 +160,23 @@ def get_movies_by_tmdb_ids(tmdb_ids):
         cur.close()
         conn.close()
 
-def get_movie_id_from_tmdb_id(tmdb_id):
-    """從 tmdb_id 獲取 movie_id"""
+def get_movie_ids_from_tmdb_ids(tmdb_ids):
+    """從多個 tmdb_id 批次獲取 movie_id，回傳 dict"""
+    if not tmdb_ids:
+        return {}
     conn = connect_db()
     cur = conn.cursor()
-    cur.execute("SELECT movie_id FROM MOVIE WHERE tmdb_id = %s", (tmdb_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row[0] if row else None
+    try:
+        placeholders = ','.join(['%s'] * len(tmdb_ids))
+        cur.execute(
+            f"SELECT tmdb_id, movie_id FROM MOVIE WHERE tmdb_id IN ({placeholders})",
+            tmdb_ids
+        )
+        rows = cur.fetchall()
+        return {tid: mid for tid, mid in rows}
+    finally:
+        cur.close()
+        conn.close()
 
 def check_movie_detail(movie_id):
     if movie_id is not None:
@@ -229,22 +237,44 @@ def get_actor_id_from_tmdb_id(tmdb_id):
     conn.close()
     return row[0] if row else None
 
-def check_actor_detail(actor_id):
+def check_actor_update(actor_id):
+    check_detail = False
+    check_movie = False
     if actor_id is not None:
         conn = connect_db()
         cur = conn.cursor()
-        cur.execute("SELECT profile_url, birthdate FROM ACTOR WHERE actor_id=%s", (actor_id,))
+        cur.execute("SELECT profile_url, birthdate, updated_at FROM ACTOR WHERE actor_id=%s", (actor_id,))
         row = cur.fetchone()
         cur.close()
         conn.close()
         if row:
-            if row[0] is None:
-                return True
-            elif row[1] is None:
-                return False
+            if row[2] is not None:
+                # 計算時間差是否在 24 小時內
+                from datetime import datetime, timedelta
+                updated_at = row[2]
+                if datetime.now() - updated_at < timedelta(days=1):
+                    check_movie = True
+                check_detail = True
             else:
-                return True
-    return False
+                if row[0] is None:
+                    check_detail = True
+                elif row[1] is not None:
+                    check_detail = True
+    return [check_detail, check_movie]
+
+def update_actor_time(actor_id):
+    if actor_id is not None:
+        conn = connect_db()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "UPDATE ACTOR SET updated_at = CURRENT_TIMESTAMP WHERE actor_id=%s",
+                (actor_id,)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
 
 def normalize_movie_row(row):
     if not row: return None
@@ -421,6 +451,61 @@ def store_actor(tmdb_actor_id, actor_data):
         
         conn.commit()
         return actor_id
+        
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+def insert_movie_cast_batch(actor_id, movie_ids, cast_members):
+    """批次更新/插入 MOVIE_CAST"""
+    conn = connect_db()
+    cur = conn.cursor()
+
+    try:
+        cast_rows = []
+        for m in cast_members:
+            tid = m.get("id")
+            mid = movie_ids.get(tid)
+            if mid:
+                cast_rows.append(
+                    (mid, actor_id, m.get("character"), m.get("order"))
+                )
+        if cast_rows:
+            cur.executemany(
+                """
+                INSERT IGNORE INTO MOVIE_CAST (movie_id, actor_id, character_name, billing_order)
+                VALUES (%s,%s,%s,%s)
+                """,
+                cast_rows,
+            )
+        
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+def insert_directors_batch(actor_id, movie_ids):
+    """批次更新/插入 DIRECTOR"""
+    conn = connect_db()
+    cur = conn.cursor()
+
+    try:
+        dir_rows = []
+        for mid in movie_ids:
+            dir_rows.append((mid, actor_id))
+        if dir_rows:
+            cur.executemany(
+                """
+                INSERT IGNORE INTO DIRECTOR (movie_id, actor_id)
+                VALUES (%s,%s)
+                """,
+                dir_rows,
+            )
         
     except Exception:
         conn.rollback()

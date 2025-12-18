@@ -29,6 +29,7 @@ CREATE TABLE `ACTOR` (
     `birthdate` DATE DEFAULT NULL,
     `country` VARCHAR(100) DEFAULT NULL,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP NULL DEFAULT NULL,
     `tmdb_id` INT UNSIGNED DEFAULT NULL,
     UNIQUE KEY `uq_tmdb` (`tmdb_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

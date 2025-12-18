@@ -11,8 +11,12 @@ from database import (
     store_movie,
     store_actor,
     check_movie_detail,
-    check_actor_detail,
+    check_actor_update,
+    update_actor_time,
+    insert_movie_cast_batch,
+    insert_directors_batch,
     get_movies_by_tmdb_ids,
+    get_movie_ids_from_tmdb_ids,
     get_tmdb_id_from_movie_id,
     get_actors_by_tmdb_ids,
     get_tmdb_id_from_actor_id,
@@ -108,15 +112,63 @@ def fetch_and_store_movie(movie_id, tmdb_movie_id):
 
 def fetch_and_store_actor(actor_id, tmdb_actor_id):
     """從 TMDB 獲取演員資料並存入資料庫"""
-    if actor_id is None or check_actor_detail(actor_id) is False:
+    updated = False
+    if actor_id is None:
         try:
             actor_data = fetch_tmdb_data(f"/person/{tmdb_actor_id}")
-            return store_actor(tmdb_actor_id, actor_data)
+            actor_id = store_actor(tmdb_actor_id, actor_data)
+            updated = True
         except Exception as e:
             print(f"Error fetching/storing actor {tmdb_actor_id}: {e}")
             raise
-    else:
-        return actor_id
+
+    check = check_actor_update(actor_id)
+    if updated is False and check[0] is False:
+        try:
+            actor_data = fetch_tmdb_data(f"/person/{tmdb_actor_id}")
+            store_actor(tmdb_actor_id, actor_data)
+        except Exception as e:
+            print(f"Error fetching/storing actor {tmdb_actor_id}: {e}")
+            raise
+    if check[1] is False:
+        fetch_actor_movies(actor_id, tmdb_actor_id)
+        update_actor_time(actor_id)
+
+    return actor_id
+
+def fetch_actor_movies(actor_id, tmdb_actor_id):
+    """獲取某演員參與的所有電影"""
+    try:
+        data = fetch_tmdb_data(f"/person/{tmdb_actor_id}/movie_credits")
+        cast_movie_block = data.get("cast", []) 
+        dir_movie_block = [m for m in data.get("crew", []) if m.get("job") == "Director"]
+
+        movie_block = cast_movie_block + dir_movie_block
+        movie_tmdb_ids = [m.get('id') for m in movie_block if m.get('id') and not is_seen_movie(m.get('id'))]
+        if movie_tmdb_ids:
+            existing_movie_map = get_movies_by_tmdb_ids(movie_tmdb_ids)
+            missing_movie_ids = [mid for mid in movie_tmdb_ids if mid not in existing_movie_map]
+            for tmdb_id in missing_movie_ids:
+                m = next((x for x in movie_block if x.get('id') == tmdb_id), None)
+                if m:
+                    try:
+                        store_movie(tmdb_id, m)
+                    except Exception as e:
+                        print(f"Warning: Failed to store movie {tmdb_id}: {e}")
+                mark_seen_movie(tmdb_id)
+        
+        cast_movie_tmdb_ids = [m.get('id') for m in cast_movie_block if m.get('id')]
+        if cast_movie_tmdb_ids:
+            cast_movie_ids = get_movie_ids_from_tmdb_ids(cast_movie_tmdb_ids)
+            insert_movie_cast_batch(actor_id, cast_movie_ids, cast_movie_block)
+
+        dir_movie_tmdb_ids = [m.get('id') for m in dir_movie_block if m.get('id')]
+        if dir_movie_tmdb_ids:
+            dir_movie_ids = get_movie_ids_from_tmdb_ids(dir_movie_tmdb_ids)
+            insert_directors_batch(actor_id, dir_movie_ids)
+
+    except Exception as e:
+        print(f"Warning: Failed to fetch movies for person {tmdb_actor_id}: {e}")
 
 @app.route('/auth/register', methods=['POST'])
 def register():
