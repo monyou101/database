@@ -181,10 +181,17 @@ async function openCastModal(id, name, photo, role) {
   if (details) {
     let infoHtml = "";
     if (details.birthdate) {
+        // --- 修改開始 ---
+        // 使用 Date 物件解析後，轉換成 YYYY-MM-DD 格式
         const birthDate = new Date(details.birthdate);
-        const age = new Date().getFullYear() - birthDate.getFullYear();
-        const dateStr = details.birthdate.toString().split("T")[0]; 
+        const yyyy = birthDate.getFullYear();
+        const mm = String(birthDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(birthDate.getDate()).padStart(2, '0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+        
+        const age = new Date().getFullYear() - yyyy;
         infoHtml += `🎂 生日：${dateStr} (現年 ${age} 歲)<br>`;
+        // --- 修改結束 ---
     }
     if (details.country) {
         infoHtml += `🌍 出生地：${details.country}<br>`;
@@ -212,18 +219,22 @@ function closePersonModal() {
   if(modal) modal.classList.add("hidden");
 }
 
+// 修改 performSearch：將使用者導向首頁，並把關鍵字放在網址列
 function performSearch() {
   const input = document.getElementById("searchInput");
   if (!input) return;
+  
   const query = input.value.trim();
   if (query) {
-    alert(`請至首頁使用搜尋功能，您輸入了：${query}`);
+    // 跳轉到 index.html，並帶上 ?q=關鍵字
+    window.location.href = `index.html?q=${encodeURIComponent(query)}`;
   }
 }
+
+// 確保內頁的輸入框按 Enter 也能觸發跳轉
 document.getElementById("searchInput")?.addEventListener("keypress", (e) => {
   if (e.key === "Enter") performSearch();
 });
-
 const cmdInput = document.getElementById("cmdInput");
 if (cmdInput) {
   cmdInput.addEventListener("keypress", async (e) => {

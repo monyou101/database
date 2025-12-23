@@ -7,7 +7,6 @@ function checkLoginStatus() {
   const userInfo = document.getElementById("userInfo");
   const writeSec = document.getElementById("writeReviewSection");
   const hintSec = document.getElementById("loginToReviewHint");
-  
   const emailDisplay = document.getElementById("userEmailDisplay");
   if(emailDisplay) emailDisplay.textContent = ""; // 先清空
 
@@ -17,8 +16,11 @@ function checkLoginStatus() {
         userInfo.classList.remove("hidden");
         userInfo.style.display = "flex"; 
         // 顯示使用者 Email
+        const savedNickname = localStorage.getItem("user_nickname");
         const savedEmail = localStorage.getItem("user_email");
-        if(savedEmail && emailDisplay) emailDisplay.textContent = savedEmail;
+       if(emailDisplay) {
+            emailDisplay.textContent = savedNickname || savedEmail || "會員";
+        }
     }
     if(writeSec) writeSec.classList.remove("hidden");
     if(hintSec) hintSec.classList.add("hidden");
@@ -82,21 +84,35 @@ async function executeSendEmail() {
   } catch (error) { alert("寄信失敗，請檢查網路。"); }
 }
 
+// 註冊邏輯：移除信箱驗證，直接送出資料
 async function doRegister() {
-  const email = document.getElementById("regEmail").value;
-  const code = document.getElementById("regCode").value;
-  const password = document.getElementById("regPwd").value;
-  if (!email || !code || !password) { alert("請填寫完整"); return; }
+  const username = document.getElementById("regUsername").value.trim();
+  const email = document.getElementById("regEmail").value.trim();
+  const password = document.getElementById("regPwd").value.trim();
+
+  if (!username || !email || !password) {
+    alert("請填寫完整資訊（暱稱、帳號、密碼）");
+    return;
+  }
 
   try {
     const res = await fetch(`${AUTH_URL}/auth/register`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, code, password })
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // 注意：此處 payload 配合後端調整，通常包含 email, password, username
+      body: JSON.stringify({ email, password, username })
     });
+    
     const data = await res.json();
-    if(data.success) { alert("註冊成功"); switchTab('login'); }
-    else { alert("註冊失敗：" + data.message); }
-  } catch(e) { alert("錯誤：" + e.message); }
+    if(data.success) { 
+      alert("註冊成功！請使用剛才的帳號登入。"); 
+      switchTab('login'); 
+    } else { 
+      alert("註冊失敗：" + data.message); 
+    }
+  } catch(e) { 
+    alert("註冊發生錯誤：" + e.message); 
+  }
 }
 
 async function doLogin() {
@@ -106,23 +122,34 @@ async function doLogin() {
     const res = await fetch(`${AUTH_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // credentials: 'include', // ★ 移除這行，避免某些環境下的權限衝突
       body: JSON.stringify({ email, password })
     });
     const data = await res.json();
+    
     if(data.success) {
+      // 1. 存入 Token
       localStorage.setItem("token", data.token);
-      localStorage.setItem("user_email", email);
-      closeAuthModal();
-      checkLoginStatus();
+      // 2. 存入 Email
+      localStorage.setItem("user_email", data.user_email);
+      // 3. 存入 暱稱 (重要：解決右上角顯示問題)
+      // 嘗試抓取 username 或 nickname，都沒有就用 email 替代
+      const displayName = data.username || data.user_email || "會員";
+    localStorage.setItem("user_nickname", displayName);
+      
+      // 4. 重新整理頁面
       location.reload(); 
-    } else { alert("登入失敗：" + data.message); }
-  } catch(e) { console.error(e); }
+    } else { 
+      alert("登入失敗：" + data.message);
+    }
+  } catch(e) { 
+    console.error(e);
+  }
 }
 
 function logout() {
   localStorage.removeItem("token");
   localStorage.removeItem("user_email");
+  localStorage.removeItem("user_nickname");
   checkLoginStatus();
   location.reload();
 }
@@ -292,5 +319,24 @@ document.addEventListener("DOMContentLoaded", () => {
     toggleBtn.addEventListener("mousedown", () => pwdInput.type = "text");
     toggleBtn.addEventListener("mouseup", () => pwdInput.type = "password");
     toggleBtn.addEventListener("mouseleave", () => pwdInput.type = "password");
+  }
+});
+// 1. 監聽 Enter 鍵 (解決首頁按 Enter 沒反應)
+const searchInput = document.getElementById("searchInput");
+if (searchInput) {
+  searchInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      smartSearch();
+    }
+  });
+}
+
+// 2. 自動執行搜尋 (如果網址帶有 ?q=... 代表是從內頁跳轉過來的)
+window.addEventListener("DOMContentLoaded", () => {
+  const params = new URLSearchParams(window.location.search);
+  const query = params.get("q");
+  if (query && searchInput) {
+    searchInput.value = decodeURIComponent(query);
+    smartSearch(); // 自動執行搜尋
   }
 });

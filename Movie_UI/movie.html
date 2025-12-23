@@ -10,10 +10,13 @@
   <div class="logo" onclick="window.location.href='index.html'" style="cursor:pointer;">
     🎬 Movie Explorer
   </div>
-
-  <div class="search-bar">
-    <input type="text" id="searchInput" placeholder="搜尋電影..." />
-    <button onclick="performSearch()">搜尋</button>
+<div class="search-bar">
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="輸入電影/人物名稱（例如：Inception）"
+      />
+      <button onclick="performSearch()">搜尋</button>
 
     <div style="width: 1px; height: 20px; background: #374151; margin: 0 12px;"></div>
 
@@ -47,19 +50,17 @@
         <p id="movieOverview" class="movie-overview"></p>
 
         <div class="detail-sub-info">
-          <p id="movieDirectors"></p>
-          <p id="movieRuntime"></p>
-          <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 4px;">
-            <p id="movieRating" style="margin:0;"></p> <p id="siteRating" style="margin:0; color: #f97316; font-weight: bold;">本站評分：計算中...</p>
-          </div>
-        </div>
+    <p id="movieDirectors"></p>
+    <p id="movieRuntime"></p>
+    <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 4px;">
+        <p id="siteRating" style="margin:0; color: #f97316; font-weight: bold;">本站評分：計算中...</p>
+    </div>
+</div>
 
         <h2>主要演員 Top Cast</h2>
         <div id="movieCast" class="scroll-row"></div>
       </div>
     </section>
-
-    </main>
 <section class="block">
   <h2>📝 觀眾評論 Reviews</h2>
   
@@ -86,11 +87,14 @@
   </div>
 </div>
   
-  <p id="loginToReviewHint" class="hint">請先登入以發表評論。</p>
+  <p id="loginToReviewHint" class="hint">
+  想要發表評論嗎？請先 <a href="javascript:void(0)" onclick="openAuthModal()" style="color: #f97316; text-decoration: underline;">登入會員</a>。
+</p>
 
   <div id="reviewsList" style="margin-top: 16px; display: flex; flex-direction: column; gap: 12px;">
     </div>
 </section>
+</main>
   <footer class="footer">
     <p>資料來源：TMDB API（僅作為課程與學習用途）</p>
   </footer>
@@ -133,20 +137,22 @@
     </div>
 
     <div id="formLogin">
-      <input type="email" id="loginEmail" placeholder="電子信箱" class="auth-input">
+      <input type="email" id="loginEmail" placeholder="帳號" class="auth-input">
       <input type="password" id="loginPwd" placeholder="密碼" class="auth-input">
       <button onclick="doLogin()" class="auth-submit">登入</button>
     </div>
 
     <div id="formRegister" class="hidden">
-      <div style="display: flex; gap: 8px;">
-        <input type="email" id="regEmail" placeholder="輸入電子信箱" class="auth-input" style="flex: 1;">
-        <button onclick="sendVerifyCode()" class="small-btn">傳送驗證碼</button>
-      </div>
-      <input type="text" id="regCode" placeholder="輸入信箱驗證碼" class="auth-input">
-      <input type="password" id="regPwd" placeholder="設定密碼" class="auth-input">
-      <button onclick="doRegister()" class="auth-submit">註冊</button>
-    </div>
+  <input type="text" id="regUsername" placeholder="輸入暱稱（顯示於評論）" class="auth-input">
+  <input type="email" id="regEmail" placeholder="帳號" class="auth-input">
+  
+  <div class="pwd-wrapper">
+    <input type="password" id="regPwd" placeholder="設定密碼" class="auth-input">
+    <span id="togglePwdBtn" class="pwd-eye">👁️</span>
+  </div>
+  
+  <button onclick="doRegister()" class="auth-submit" style="margin-top: 10px;">註冊</button>
+</div>
     
     <p id="authMsg" style="color: red; margin-top: 10px; font-size: 14px; text-align: center;"></p>
   </div>

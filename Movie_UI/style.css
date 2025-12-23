@@ -552,6 +552,34 @@ body {
 .cmd-input-simple::placeholder {
   color: #065f46; /* 深綠色提示字 */
 }
+/* 確保父容器是定位基準 */
+.pwd-wrapper {
+  position: relative;
+  width: 100%;
+  margin-bottom: 12px; /* 保持與其他 input 一致的間距 */
+}
+
+/* 密碼輸入框：右側 padding 增加，避免文字蓋住眼睛 */
+.pwd-wrapper .auth-input {
+  width: 100%;
+  padding-right: 40px; 
+  margin-bottom: 0; /* 讓 margin 由 wrapper 控制 */
+  box-sizing: border-box;
+}
+
+/* 眼睛圖示：絕對定位在右側中央 */
+.pwd-eye {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%); /* 向上偏移自身一半的高度，達成完美垂直置中 */
+  cursor: pointer;
+  user-select: none;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  z-index: 10;
+}
 /* (選用) 如果您希望其他小卡片的破圖也要套用，可以加上這段 */
 /* .movie-poster, .rank-poster, .person-photo {
   background-color: #1f2937;

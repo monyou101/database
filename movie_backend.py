@@ -172,17 +172,16 @@ def fetch_actor_movies(actor_id, tmdb_actor_id):
 
 @app.route('/auth/register', methods=['POST'])
 def register():
-    """用戶註冊"""
     data = request.json
-    # username = data.get('username')
+    username = data.get('username')
     email = data.get('email')
     password = data.get('password')  # 實際應 hash，例如使用 bcrypt
     
-    if not all([email, password]):
+    if not all([username, email, password]):
         return jsonify({'success': False, 'message': 'Missing fields'}), 400
     
     try:
-        create_user(email, password)
+        create_user(username, email, password)
         return jsonify({'success': True, 'message': 'User registered successfully'}), 201
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -191,7 +190,6 @@ def register():
 def login():
     """用戶登入"""
     data = request.json
-    # username = data.get('username')
     email = data.get('email')
     password = data.get('password')
     
@@ -208,7 +206,8 @@ def login():
         return jsonify({
             'success': True,
             'token': token,
-            'user_email': email
+            'user_email': email,
+            'username': user['username']
         })
     return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
 

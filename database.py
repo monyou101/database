@@ -516,12 +516,14 @@ def insert_directors_batch(actor_id, movie_ids):
 
 # ==================== 用戶管理 ====================
 
-def create_user(email, password_hash):
-    """建立新用戶"""
+def create_user(username, email, password_hash):
+    """建立新用戶，存入正確的暱稱"""
     conn = connect_db()
     cur = conn.cursor()
     try:
-        cur.execute("INSERT INTO USER (username, email, password_hash) VALUES (%s, %s, %s)", (email, email, password_hash))
+        # 修改 SQL，將傳進來的 username 存入 username 欄位
+        cur.execute("INSERT INTO USER (username, email, password_hash) VALUES (%s, %s, %s)", 
+                    (username, email, password_hash))
         conn.commit()
         return True
     except Exception as e:
