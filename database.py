@@ -533,11 +533,11 @@ def create_user(username, email, password_hash):
         cur.close()
         conn.close()
 
-def get_user_by_email(email, password_hash):
-    """根據 email 和密碼獲取用戶"""
+def get_user_by_email(email):
+    """根據 email 獲取用戶資料（含雜湊密碼）"""
     conn = connect_db()
     cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT user_id, username FROM USER WHERE email = %s AND password_hash = %s", (email, password_hash))
+    cur.execute("SELECT user_id, username, email, password_hash FROM USER WHERE email = %s LIMIT 1", (email,))
     user = cur.fetchone()
     cur.close()
     conn.close()

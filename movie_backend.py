@@ -7,6 +7,7 @@ import jwt
 import datetime
 import time
 from threading import Lock
+from werkzeug.security import generate_password_hash, check_password_hash
 from database import (
     store_movie,
     store_actor,
@@ -175,13 +176,15 @@ def register():
     data = request.json
     username = data.get('username')
     email = data.get('email')
-    password = data.get('password')  # 實際應 hash，例如使用 bcrypt
+    password = data.get('password')
+    # 雜湊密碼以保護使用者資料（預設 pbkdf2:sha256）
+    password_hash = generate_password_hash(password)
     
     if not all([username, email, password]):
         return jsonify({'success': False, 'message': 'Missing fields'}), 400
     
     try:
-        create_user(username, email, password)
+        create_user(username, email, password_hash)
         return jsonify({'success': True, 'message': 'User registered successfully'}), 201
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -193,9 +196,9 @@ def login():
     email = data.get('email')
     password = data.get('password')
     
-    user = get_user_by_email(email, password)
+    user = get_user_by_email(email)
     
-    if user:
+    if user and check_password_hash(user.get('password_hash', ''), password):
         payload = {
             'user_id': user['user_id'],
             'email': email,
