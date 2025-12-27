@@ -125,39 +125,70 @@ function showRankRow(results, targetId) {
     .join("");
 }
 
-// ======= 3. 人物 Modal (正式串接後端 API) =======
 async function openPersonModal(personId) {
   const modal = document.getElementById("personModal");
   if (!modal) return;
 
-  // 先清空舊資料
+  // 1. 先清空舊資料 (包含文字與列表)
   document.getElementById("personName").textContent = "載入中...";
   document.getElementById("personPhoto").src = "No_image_available.png";
   document.getElementById("personBirth").textContent = "";
   document.getElementById("personPlace").textContent = "";
   document.getElementById("personBio").textContent = "";
-  document.getElementById("personKnownFor").innerHTML = "";
-  document.getElementById("personMovies").innerHTML = "";
+  
+  // ★ 清空電影列表容器
+  const knownForBox = document.getElementById("personKnownFor");
+  const moviesBox = document.getElementById("personMovies");
+  if (knownForBox) knownForBox.innerHTML = "";
+  if (moviesBox) moviesBox.innerHTML = "";
 
   modal.classList.remove("hidden");
 
   try {
-    // ★ 呼叫後端取得演員詳細資料
+    // 2. 呼叫後端
     const res = await fetch(`${BACKEND_URL}/actors/${personId}`);
     if (!res.ok) throw new Error("API Error");
     const data = await res.json();
 
-    // 填入資料
+    // 3. 填入基本資料
     document.getElementById("personName").textContent = data.name;
     document.getElementById("personPhoto").src = data.profile_url || "No_image_available.png";
-    document.getElementById("personBirth").textContent = "生日：" + (data.birthdate || "未知");
+   // --- 日期格式統一修改開始 ---
+    if (data.birthdate) {
+      const birthDate = new Date(data.birthdate);
+      const yyyy = birthDate.getFullYear();
+      const mm = String(birthDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(birthDate.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+
+      // 計算年齡
+      const age = new Date().getFullYear() - yyyy;
+
+      // 格式：🎂 生日：1992-10-12 (現年 33 歲)
+      document.getElementById("personBirth").textContent = `🎂 生日：${dateStr} (現年 ${age} 歲)`;
+    } else {
+      document.getElementById("personBirth").textContent = "生日：未知";
+    }
+    // --- 日期格式統一修改結束 ---
     document.getElementById("personPlace").textContent = "出生地：" + (data.country || "未知");
     document.getElementById("personBio").textContent = data.biography || "尚無簡介。";
 
-    // 如果後端有回傳 known_for 或 movies (視後端實作而定)
-    // 這裡保留擴充空間，如果 data.known_for 存在則顯示
+    // ★★★ 4. 渲染「代表作品」 (Known For) ★★★
     if (data.known_for && data.known_for.length > 0) {
-       // 渲染代表作品邏輯...
+        knownForBox.innerHTML = data.known_for.map(m => createModalMovieCard(m)).join("");
+    } else {
+        knownForBox.innerHTML = "<p style='color:#666; font-size: 14px;'>無代表作資料</p>";
+    }
+
+    // ★★★ 5. 渲染「參與電影」 (Movies as Actor) ★★★
+    // 通常 API 回傳的是 movies_as_actor
+    const allMovies = data.movies_as_actor || [];
+    if (allMovies.length > 0) {
+        // 依照年份排序 (新的在前)
+        allMovies.sort((a, b) => (b.release_year || 0) - (a.release_year || 0));
+        moviesBox.innerHTML = allMovies.map(m => createModalMovieCard(m)).join("");
+    } else {
+        moviesBox.innerHTML = "<p style='color:#666; font-size: 14px;'>無出演紀錄</p>";
     }
 
   } catch (e) {
@@ -174,28 +205,43 @@ function goMovieDetail(id) {
   window.location.href = `movie.html?id=${id}`;
 }
 
-// ======= 4. 指令輸入功能 (CMD) =======
-const cmdInput = document.getElementById("cmdInput");
+function closeCmdModal() {
+  const m = document.getElementById("cmdModal");
+  if(m) m.classList.add("hidden");
+}
+
+// 2. 修改 Enter 鍵的監聽邏輯
 if (cmdInput) {
   cmdInput.addEventListener("keypress", async (e) => {
     if (e.key === "Enter") {
       const command = cmdInput.value.trim();
       if (!command) return;
       
-      cmdInput.value = ""; // 清空
+      // 暫存指令方便查看，不立即清空，或者發送後清空看你習慣
+      cmdInput.value = ""; 
 
       try {
-        // ★ 發送 POST 請求給後端 (假設路徑為 /api/cmd)
-        const res = await fetch(`${BACKEND_URL}/api/cmd`, {
+        const res = await fetch(`${BACKEND_URL}/api/cmd`, { // 或 movie.js 裡的 BASE_URL
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command: command }) // 送出 { "command": "指令內容" }
+            body: JSON.stringify({ command: command })
         });
         
         const data = await res.json();
         
-        // ★ 顯示後端回傳的計算結果
-        alert(`💻 指令回傳結果：\n\n${JSON.stringify(data, null, 2)}`);
+        // ★★★ 修改重點：原本是 alert，現在改成開啟自訂視窗 ★★★
+        const outputBox = document.getElementById("cmdOutput");
+        const modal = document.getElementById("cmdModal");
+        
+        if (outputBox && modal) {
+            // 將 JSON 轉成漂亮的字串 (縮排 2 格)
+            outputBox.textContent = JSON.stringify(data, null, 2);
+            modal.classList.remove("hidden");
+        } else {
+            // 如果忘記加 HTML，就還是彈出 alert 當備案
+            alert(JSON.stringify(data, null, 2));
+        }
+        // ★★★ 修改結束 ★★★
 
       } catch (err) {
         alert("指令發送失敗：" + err.message);
@@ -203,6 +249,23 @@ if (cmdInput) {
     }
   });
 }
+// ★★★ 產生 Modal 內的電影小卡片 HTML ★★★
+function createModalMovieCard(m) {
+  const poster = m.poster_url || "No_image_available.png";
+  const title = m.title || "未知片名";
+  const year = m.release_year || "----";
+  const rating = m.rating ? `⭐ ${m.rating}` : "";
 
+  // 這裡使用與首頁一致的樣式 (.movie-card)
+  // 注意：onclick 指向 goMovieDetail
+  return `
+    <div class="movie-card" onclick="goMovieDetail(${m.movie_id})">
+      <img src="${poster}" class="movie-poster" alt="${title}">
+      <div class="movie-title">${title}</div>
+      <div class="movie-meta">${year}</div>
+      <div class="movie-rating">${rating}</div>
+    </div>
+  `;
+}
 // 初始化
 loadTrending();

@@ -110,8 +110,47 @@ function renderMovieDetail(m) {
   setText("movieRuntime", runtime);
   setText("movieRating", `TMDB 評分：${rating}`);
 
-  const directorNames = (m.directors || []).map(d => d.name).join("、");
-  setText("movieDirectors", directorNames ? `導演：${directorNames}` : "");
+  // --- 修改開始：讓導演名字可以點擊 ---
+  const elDirectors = document.getElementById("movieDirectors");
+  if (elDirectors) {
+    const directors = m.directors || [];
+    if (directors.length > 0) {
+      elDirectors.innerHTML = "<span style='color:#ccc'>導演：</span>"; // 標題
+      
+      directors.forEach((d, index) => {
+        // 建立一個可點擊的 span
+        const span = document.createElement("span");
+        span.textContent = d.name;
+        
+        // 設定樣式：橘色、底線、手型游標
+        span.style.color = "#f97316"; 
+        span.style.cursor = "pointer";
+        span.style.textDecoration = "underline";
+        span.style.fontWeight = "bold";
+
+        // 準備資料
+        const pId = d.actor_id; // 假設後端回傳結構有 actor_id
+        const pName = d.name;
+        const pPhoto = d.profile_url || "No_image_available.png";
+        
+        // 設定點擊事件，重複使用 openCastModal
+        span.onclick = function() {
+            openCastModal(pId, pName, pPhoto, '導演');
+        };
+
+        elDirectors.appendChild(span);
+
+        // 如果不是最後一個，加上頓號分隔
+        if (index < directors.length - 1) {
+            const sep = document.createTextNode("、");
+            elDirectors.appendChild(sep);
+        }
+      });
+    } else {
+      elDirectors.textContent = "";
+    }
+  }
+  // --- 修改結束 ---
 }
 
 function renderCast(castList) {
@@ -158,8 +197,16 @@ async function openCastModal(id, name, photo, role) {
   document.getElementById("modalPersonName").textContent = name;
   document.getElementById("modalPersonPhoto").src = photo;
   
+  // --- 修改開始：判斷如果是導演，顯示不同文字 ---
   const elRole = document.getElementById("modalPersonRole");
-  if(elRole) elRole.textContent = role ? `飾演：${role}` : "";
+  if(elRole) {
+      if (role === '導演') {
+          elRole.textContent = "身分：導演"; // 或者只顯示 "導演"
+      } else {
+          elRole.textContent = role ? `飾演：${role}` : "";
+      }
+  }
+  // --- 修改結束 ---
   
   document.getElementById("modalPersonBirth").textContent = "";
   document.getElementById("modalPersonPlace").textContent = "";
@@ -231,30 +278,49 @@ function performSearch() {
   }
 }
 
-// 確保內頁的輸入框按 Enter 也能觸發跳轉
-document.getElementById("searchInput")?.addEventListener("keypress", (e) => {
-  if (e.key === "Enter") performSearch();
-});
-const cmdInput = document.getElementById("cmdInput");
+// ... (保留原本的變數宣告) ...
+
+// 1. 新增關閉視窗函式 (放在檔案任何地方皆可，例如最下方)
+function closeCmdModal() {
+  const m = document.getElementById("cmdModal");
+  if(m) m.classList.add("hidden");
+}
+
+// 2. 修改 Enter 鍵的監聽邏輯
 if (cmdInput) {
   cmdInput.addEventListener("keypress", async (e) => {
     if (e.key === "Enter") {
       const command = cmdInput.value.trim();
       if (!command) return;
-      cmdInput.value = "";
+      
+      // 暫存指令方便查看，不立即清空，或者發送後清空看你習慣
+      cmdInput.value = ""; 
 
       try {
-        const res = await fetch(`${BASE_URL}/api/cmd`, {
+        const res = await fetch(`${BACKEND_URL}/api/cmd`, { // 或 movie.js 裡的 BASE_URL
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ command: command })
         });
         
         const data = await res.json();
-        alert(`💻 指令執行結果：\n\n${JSON.stringify(data, null, 2)}`);
+        
+        // ★★★ 修改重點：原本是 alert，現在改成開啟自訂視窗 ★★★
+        const outputBox = document.getElementById("cmdOutput");
+        const modal = document.getElementById("cmdModal");
+        
+        if (outputBox && modal) {
+            // 將 JSON 轉成漂亮的字串 (縮排 2 格)
+            outputBox.textContent = JSON.stringify(data, null, 2);
+            modal.classList.remove("hidden");
+        } else {
+            // 如果忘記加 HTML，就還是彈出 alert 當備案
+            alert(JSON.stringify(data, null, 2));
+        }
+        // ★★★ 修改結束 ★★★
 
       } catch (err) {
-        alert("指令執行失敗：" + err.message);
+        alert("指令發送失敗：" + err.message);
       }
     }
   });

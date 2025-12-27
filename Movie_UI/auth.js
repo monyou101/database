@@ -207,7 +207,7 @@ async function loadReviews(movieId) {
       <div class="review-card" style="margin-bottom: 12px;">
         <div style="display:flex; justify-content: space-between; align-items: center;">
             <div class="review-user" style="display:flex; align-items:center;">
-                ${r.email || "匿名用戶"} 
+                ${r.username || r.nickname || r.email || "匿名用戶"}
                 ${scoreHtml}
             </div>
             <div class="review-date">${dateStr}</div>
@@ -313,12 +313,40 @@ async function submitReview(event) {
 document.addEventListener("DOMContentLoaded", () => {
   checkLoginStatus();
   
-  const pwdInput = document.getElementById("regPwd");
-  const toggleBtn = document.getElementById("togglePwdBtn");
-  if (pwdInput && toggleBtn) {
-    toggleBtn.addEventListener("mousedown", () => pwdInput.type = "text");
-    toggleBtn.addEventListener("mouseup", () => pwdInput.type = "password");
-    toggleBtn.addEventListener("mouseleave", () => pwdInput.type = "password");
+  // 1. 處理「註冊」頁面的眼睛 (regPwd)
+  const regPwdInput = document.getElementById("regPwd");
+  const toggleRegBtn = document.getElementById("togglePwdBtn");
+  
+  if (regPwdInput && toggleRegBtn) {
+    // 按下顯示
+    toggleRegBtn.addEventListener("mousedown", () => regPwdInput.type = "text");
+    toggleRegBtn.addEventListener("touchstart", (e) => { // 支援手機觸控
+        e.preventDefault(); 
+        regPwdInput.type = "text";
+    });
+
+    // 放開隱藏
+    toggleRegBtn.addEventListener("mouseup", () => regPwdInput.type = "password");
+    toggleRegBtn.addEventListener("mouseleave", () => regPwdInput.type = "password");
+    toggleRegBtn.addEventListener("touchend", () => regPwdInput.type = "password");
+  }
+
+  // 2. ★★★ 新增：處理「登入」頁面的眼睛 (loginPwd) ★★★
+  const loginPwdInput = document.getElementById("loginPwd");
+  const toggleLoginBtn = document.getElementById("toggleLoginPwdBtn");
+
+  if (loginPwdInput && toggleLoginBtn) {
+    // 按下顯示
+    toggleLoginBtn.addEventListener("mousedown", () => loginPwdInput.type = "text");
+    toggleLoginBtn.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        loginPwdInput.type = "text";
+    });
+
+    // 放開隱藏
+    toggleLoginBtn.addEventListener("mouseup", () => loginPwdInput.type = "password");
+    toggleLoginBtn.addEventListener("mouseleave", () => loginPwdInput.type = "password");
+    toggleLoginBtn.addEventListener("touchend", () => loginPwdInput.type = "password");
   }
 });
 // 1. 監聽 Enter 鍵 (解決首頁按 Enter 沒反應)
