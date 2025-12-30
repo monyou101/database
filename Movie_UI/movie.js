@@ -285,7 +285,7 @@ function closeCmdModal() {
   const m = document.getElementById("cmdModal");
   if(m) m.classList.add("hidden");
 }
-
+const cmdInput = document.getElementById("cmdInput");
 // 2. 修改 Enter 鍵的監聽邏輯
 if (cmdInput) {
   cmdInput.addEventListener("keypress", async (e) => {
@@ -297,7 +297,7 @@ if (cmdInput) {
       cmdInput.value = ""; 
 
       try {
-        const res = await fetch(`${BACKEND_URL}/api/cmd`, { // 或 movie.js 裡的 BASE_URL
+        const res = await fetch(`${BASE_URL}/api/cmd`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ command: command })
